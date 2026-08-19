@@ -19,6 +19,8 @@
   #resetBtn { background:#3f3f52; }
   #status { position:absolute; bottom:16px; left:14px; right:14px; z-index:10; color:#e5e5f0; font-size:13px; background:rgba(10,10,15,.7); padding:10px 14px; border-radius:10px; line-height:1.4; }
   #calLabel { position:absolute; top:70px; left:14px; z-index:10; color:#facc15; font-size:15px; font-weight:700; background:rgba(10,10,15,.75); padding:8px 14px; border-radius:10px; display:none; }
+  #debug { position:absolute; top:70px; right:14px; z-index:10; color:#4ade80; font-size:12px; background:rgba(10,10,15,.75); padding:6px 10px; border-radius:8px; font-family:monospace; text-align:right; white-space:pre; }
+  #jsError { position:absolute; top:130px; left:14px; right:14px; z-index:20; color:#fff; font-size:12px; background:rgba(220,38,38,.92); padding:10px; border-radius:8px; font-family:monospace; display:none; max-height:40vh; overflow:auto; white-space:pre-wrap; }
 </style>
 </head>
 <body>
@@ -32,37 +34,32 @@
     <button id="testSoundBtn">🔊 Probar sonido</button>
   </div>
   <div id="calLabel"></div>
-  <div id="debug" style="position:absolute; top:70px; right:14px; z-index:10; color:#4ade80; font-size:12px; background:rgba(10,10,15,.75); padding:6px 10px; border-radius:8px; font-family:monospace; text-align:right;"></div>
-  <div id="jsError" style="position:absolute; top:110px; left:14px; right:14px; z-index:20; color:#fff; font-size:12px; background:rgba(220,38,38,.92); padding:10px; border-radius:8px; font-family:monospace; display:none; max-height:40vh; overflow:auto; white-space:pre-wrap;"></div>
+  <div id="debug"></div>
+  <div id="jsError"></div>
   <div id="status">Toca "Iniciar cámara" para comenzar.</div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script type="module">
+import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
-<script>
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const startBtn = document.getElementById('startBtn');
+const calBtn = document.getElementById('calBtn');
+const resetBtn = document.getElementById('resetBtn');
+const testSoundBtn = document.getElementById('testSoundBtn');
+const statusEl = document.getElementById('status');
+const calLabel = document.getElementById('calLabel');
+const debugEl = document.getElementById('debug');
 const jsErrorEl = document.getElementById('jsError');
 
 function showJsError(msg){
   jsErrorEl.style.display = 'block';
   jsErrorEl.textContent = (jsErrorEl.textContent ? jsErrorEl.textContent + '\n---\n' : '') + msg;
 }
-window.addEventListener('error', (e) => {
-  showJsError('ERROR: ' + e.message + ' (línea ' + e.lineno + ')');
-});
-window.addEventListener('unhandledrejection', (e) => {
-  showJsError('PROMISE ERROR: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
-});
-const startBtn = document.getElementById('startBtn');
-const calBtn = document.getElementById('calBtn');
-const resetBtn = document.getElementById('resetBtn');
-const statusEl = document.getElementById('status');
-const calLabel = document.getElementById('calLabel');
-const debugEl = document.getElementById('debug');
-const testSoundBtn = document.getElementById('testSoundBtn');
+window.addEventListener('error', (e) => showJsError('ERROR: ' + e.message + ' (línea ' + e.lineno + ')'));
+window.addEventListener('unhandledrejection', (e) => showJsError('PROMISE ERROR: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
 
 let W = 0, H = 0;
 function resize(){
@@ -83,17 +80,10 @@ function initAudio(){
   const data = noiseBuffer.getChannelData(0);
   for (let i=0;i<bufSize;i++) data[i] = Math.random()*2-1;
 }
-
 function ensureAudioRunning(){
   if (!actx) initAudio();
   if (actx.state !== 'running') actx.resume();
 }
-
-testSoundBtn.addEventListener('click', () => {
-  ensureAudioRunning();
-  playKick();
-  statusEl.textContent = 'Si escuchaste el kick, el audio funciona bien. AudioContext state: ' + actx.state;
-});
 
 function envGain(g, start, peak, end, t0, atk, dec){
   g.gain.cancelScheduledValues(t0);
@@ -113,7 +103,6 @@ function playKick(){
   osc.connect(g); g.connect(actx.destination);
   osc.start(t0); osc.stop(t0+0.2);
 }
-
 function playSnare(){
   const t0 = actx.currentTime;
   const src = actx.createBufferSource();
@@ -131,7 +120,6 @@ function playSnare(){
   src.start(t0); src.stop(t0+0.2);
   osc.start(t0); osc.stop(t0+0.15);
 }
-
 function playHihat(){
   const t0 = actx.currentTime;
   const src = actx.createBufferSource();
@@ -143,7 +131,6 @@ function playHihat(){
   src.connect(hp); hp.connect(g); g.connect(actx.destination);
   src.start(t0); src.stop(t0+0.08);
 }
-
 function playTom(){
   const t0 = actx.currentTime;
   const osc = actx.createOscillator();
@@ -155,7 +142,6 @@ function playTom(){
   osc.connect(g); g.connect(actx.destination);
   osc.start(t0); osc.stop(t0+0.25);
 }
-
 function playCrash(){
   const t0 = actx.currentTime;
   const src = actx.createBufferSource();
@@ -172,8 +158,14 @@ const SOUND_MAP = { Kick:playKick, Snare:playSnare, HiHat:playHihat, Tom:playTom
 const ZONE_COLORS = { Kick:'#ef4444', Snare:'#3b82f6', HiHat:'#eab308', Tom:'#22c55e', Crash:'#f97316' };
 const ZONE_ORDER = ['Kick','Snare','HiHat','Tom','Crash'];
 
+testSoundBtn.addEventListener('click', () => {
+  ensureAudioRunning();
+  playKick();
+  statusEl.textContent = 'Si escuchaste el kick, el audio funciona bien. AudioContext state: ' + actx.state;
+});
+
 // ---------- CALIBRACIÓN ----------
-let zones = []; // {name, x, y, r} normalizado 0-1 (coords ya en espejo/pantalla)
+let zones = [];
 let calibrating = false;
 let calIndex = 0;
 
@@ -222,21 +214,17 @@ resetBtn.addEventListener('click', () => {
   statusEl.textContent = 'Zonas borradas. Calibra de nuevo.';
 });
 
-// ---------- HAND TRACKING + HIT DETECTION ----------
-const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-hands.setOptions({
-  maxNumHands: 2,
-  modelComplexity: 0,
-  minDetectionConfidence: 0.6,
-  minTrackingConfidence: 0.5
-});
-
-// estado por slot de mano (0=Left, 1=Right según handedness del modelo, estable entre frames)
-const handState = [ {prevY:null, prevDy:0, smoothY:null, lastSeen:0}, {prevY:null, prevDy:0, smoothY:null, lastSeen:0} ];
-const lastHit = {}; // por nombre de zona
+// ---------- HIT DETECTION ----------
+const handState = {
+  Left:  { prevY:null, prevDy:0, smoothY:null, lastSeen:0 },
+  Right: { prevY:null, prevDy:0, smoothY:null, lastSeen:0 }
+};
+const lastHit = {};
 const COOLDOWN_MS = 130;
-const VELOCITY_THRESHOLD = 0.008; // fracción de altura por frame, sobre la señal ya suavizada
-const SMOOTHING = 0.4; // 0 = sin suavizar, más alto = más suave pero más lag
+const VELOCITY_THRESHOLD = 0.012;
+const SMOOTHING = 0.4;
+const MIN_CONFIDENCE = 0.6;
+let flashZones = {};
 
 function checkZoneHit(nx, ny){
   for (const z of zones){
@@ -253,12 +241,7 @@ function checkZoneHit(nx, ny){
   return null;
 }
 
-let flashZones = {}; // feedback visual
-
-hands.onResults((results) => {
-  ctx.clearRect(0,0,W,H);
-
-  // dibujar zonas calibradas
+function drawZones(){
   for (const z of zones){
     const cx = z.x*W, cy = z.y*H, r = z.r*W;
     const flashing = flashZones[z.name] && performance.now() - flashZones[z.name] < 120;
@@ -274,26 +257,33 @@ hands.onResults((results) => {
     ctx.textAlign = 'center';
     ctx.fillText(z.name, cx, cy+5);
   }
+}
 
-  const handCount = results.multiHandLandmarks ? Math.min(results.multiHandLandmarks.length, 2) : 0;
-  const dy0 = isFinite(handState[0].prevDy) ? handState[0].prevDy.toFixed(3) : '0';
-  const dy1 = isFinite(handState[1].prevDy) ? handState[1].prevDy.toFixed(3) : '0';
-  debugEl.textContent = `manos: ${handCount} | dyL: ${dy0} | dyR: ${dy1} | zonas: ${zones.length}`;
+function processResults(result){
+  ctx.clearRect(0,0,W,H);
+  drawZones();
 
-  if (results.multiHandLandmarks){
-    results.multiHandLandmarks.forEach((lm, i) => {
-      // usar lateralidad (Left/Right) para asignar un slot ESTABLE entre frames,
-      // en vez del índice del array (que MediaPipe puede reordenar frame a frame)
-      const label = results.multiHandedness && results.multiHandedness[i] ? results.multiHandedness[i].label : null;
-      const slot = label === 'Right' ? 1 : 0;
-      if (slot > 1) return;
+  let visibleCount = 0;
+  const seenLabels = new Set();
+
+  if (result.landmarks && result.landmarks.length){
+    result.landmarks.forEach((lm, i) => {
+      const handedness = result.handednesses && result.handednesses[i] ? result.handednesses[i][0] : null;
+      const score = handedness ? handedness.score : 0;
+      if (score < MIN_CONFIDENCE) return; // filtra detecciones de baja confianza (manos fantasma)
+
+      // el modelo NO trabaja sobre imagen espejada, pero video/canvas sí (scaleX(-1)) -> invertimos etiqueta y x
+      const rawLabel = handedness ? handedness.categoryName : (i===0?'Left':'Right');
+      const label = rawLabel === 'Left' ? 'Right' : 'Left'; // espejo
+      seenLabels.add(label);
+      visibleCount++;
+
       const tip = lm[8]; // punta del índice
-      if (!tip || !isFinite(tip.x) || !isFinite(tip.y)){ return; }
-      // la imagen del modelo NO está espejada; el canvas/video sí (scaleX(-1)) -> invertir x
+      if (!tip || !isFinite(tip.x) || !isFinite(tip.y)) return;
       const nx = 1 - tip.x;
       const ny = tip.y;
+      if (nx < -0.5 || nx > 1.5 || ny < -0.5 || ny > 1.5) return; // descarta coordenadas absurdas
 
-      // dibujar punto de la mano
       ctx.beginPath();
       ctx.arc(nx*W, ny*H, 10, 0, Math.PI*2);
       ctx.fillStyle = '#ffffffcc';
@@ -302,50 +292,82 @@ hands.onResults((results) => {
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      const st = handState[slot];
+      const st = handState[label];
       const now = performance.now();
       if (now - st.lastSeen > 250){
-        // esta mano estuvo ausente un rato: no arrastrar posición vieja, reiniciar limpio
-        st.smoothY = null;
-        st.prevY = null;
-        st.prevDy = 0;
+        st.smoothY = null; st.prevY = null; st.prevDy = 0;
       }
       st.lastSeen = now;
 
-      // suavizado exponencial de la posición y, para filtrar ruido del landmark
       if (st.smoothY === null) st.smoothY = ny;
       st.smoothY = st.smoothY * SMOOTHING + ny * (1 - SMOOTHING);
       const smY = st.smoothY;
 
       if (st.prevY !== null){
-        const dy = smY - st.prevY; // positivo = bajando, ya sobre señal suavizada
+        const dy = smY - st.prevY;
         const wasFalling = st.prevDy > VELOCITY_THRESHOLD;
         const nowSlowing = dy < st.prevDy * 0.5;
         if (wasFalling && nowSlowing && !calibrating){
           const hitName = checkZoneHit(nx, ny);
-          if (hitName) flashZones[hitName] = performance.now();
+          if (hitName) flashZones[hitName] = now;
         }
         st.prevDy = dy;
       }
       st.prevY = smY;
     });
   }
-});
 
-// ---------- CÁMARA ----------
-let camera = null;
+  const dL = handState.Left.prevDy.toFixed(3);
+  const dR = handState.Right.prevDy.toFixed(3);
+  debugEl.textContent = `manos: ${visibleCount}\ndyL: ${dL}  dyR: ${dR}\nzonas: ${zones.length}`;
+}
+
+// ---------- CÁMARA + LOOP ----------
+let handLandmarker = null;
+let running = false;
+
+async function initModel(){
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      delegate: "GPU"
+    },
+    runningMode: "VIDEO",
+    numHands: 2,
+    minHandDetectionConfidence: 0.6,
+    minHandPresenceConfidence: 0.6,
+    minTrackingConfidence: 0.5
+  });
+}
+
+function loop(){
+  if (!running) return;
+  if (video.readyState >= 2 && handLandmarker){
+    const result = handLandmarker.detectForVideo(video, performance.now());
+    processResults(result);
+  }
+  requestAnimationFrame(loop);
+}
 
 startBtn.addEventListener('click', async () => {
   startBtn.disabled = true;
   startBtn.textContent = 'Cargando...';
   try {
     ensureAudioRunning();
-    camera = new Camera(video, {
-      onFrame: async () => { await hands.send({ image: video }); },
-      width: 640,
-      height: 480
+    statusEl.textContent = 'Cargando modelo de tracking...';
+    if (!handLandmarker) await initModel();
+    statusEl.textContent = 'Pidiendo acceso a la cámara...';
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
     });
-    await camera.start();
+    video.srcObject = stream;
+    await video.play();
+    running = true;
+    requestAnimationFrame(loop);
     startBtn.style.display = 'none';
     calBtn.disabled = false;
     loadZones();
@@ -353,7 +375,8 @@ startBtn.addEventListener('click', async () => {
       ? 'Cámara activa. Ya tienes zonas calibradas — a tocar.'
       : 'Cámara activa. Toca "Calibrar" para definir tu batería.';
   } catch (err){
-    statusEl.textContent = 'Error accediendo a la cámara: ' + err.message + '. ¿Diste permiso de cámara y estás en HTTPS?';
+    statusEl.textContent = 'Error: ' + err.message;
+    showJsError('INIT ERROR: ' + err.message);
     startBtn.disabled = false;
     startBtn.textContent = '▶ Iniciar cámara';
   }
