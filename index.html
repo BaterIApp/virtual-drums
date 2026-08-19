@@ -33,6 +33,7 @@
   </div>
   <div id="calLabel"></div>
   <div id="debug" style="position:absolute; top:70px; right:14px; z-index:10; color:#4ade80; font-size:12px; background:rgba(10,10,15,.75); padding:6px 10px; border-radius:8px; font-family:monospace; text-align:right;"></div>
+  <div id="jsError" style="position:absolute; top:110px; left:14px; right:14px; z-index:20; color:#fff; font-size:12px; background:rgba(220,38,38,.92); padding:10px; border-radius:8px; font-family:monospace; display:none; max-height:40vh; overflow:auto; white-space:pre-wrap;"></div>
   <div id="status">Toca "Iniciar cámara" para comenzar.</div>
 </div>
 
@@ -43,6 +44,18 @@
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const jsErrorEl = document.getElementById('jsError');
+
+function showJsError(msg){
+  jsErrorEl.style.display = 'block';
+  jsErrorEl.textContent = (jsErrorEl.textContent ? jsErrorEl.textContent + '\n---\n' : '') + msg;
+}
+window.addEventListener('error', (e) => {
+  showJsError('ERROR: ' + e.message + ' (línea ' + e.lineno + ')');
+});
+window.addEventListener('unhandledrejection', (e) => {
+  showJsError('PROMISE ERROR: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
 const startBtn = document.getElementById('startBtn');
 const calBtn = document.getElementById('calBtn');
 const resetBtn = document.getElementById('resetBtn');
@@ -218,8 +231,8 @@ hands.setOptions({
   minTrackingConfidence: 0.5
 });
 
-// estado por slot de mano (0 y 1)
-const handState = [ {prevY:null, prevDy:0, smoothY:null}, {prevY:null, prevDy:0, smoothY:null} ];
+// estado por slot de mano (0=Left, 1=Right según handedness del modelo, estable entre frames)
+const handState = [ {prevY:null, prevDy:0, smoothY:null, lastSeen:0}, {prevY:null, prevDy:0, smoothY:null, lastSeen:0} ];
 const lastHit = {}; // por nombre de zona
 const COOLDOWN_MS = 130;
 const VELOCITY_THRESHOLD = 0.008; // fracción de altura por frame, sobre la señal ya suavizada
@@ -263,14 +276,17 @@ hands.onResults((results) => {
   }
 
   const handCount = results.multiHandLandmarks ? Math.min(results.multiHandLandmarks.length, 2) : 0;
-  let debugDy = handState[0].prevDy;
-  if (!isFinite(debugDy)) debugDy = 0;
-  debugDy = Math.max(-1, Math.min(1, debugDy));
-  debugEl.textContent = `manos: ${handCount} | dy: ${debugDy.toFixed(3)} | zonas: ${zones.length}`;
+  const dy0 = isFinite(handState[0].prevDy) ? handState[0].prevDy.toFixed(3) : '0';
+  const dy1 = isFinite(handState[1].prevDy) ? handState[1].prevDy.toFixed(3) : '0';
+  debugEl.textContent = `manos: ${handCount} | dyL: ${dy0} | dyR: ${dy1} | zonas: ${zones.length}`;
 
   if (results.multiHandLandmarks){
     results.multiHandLandmarks.forEach((lm, i) => {
-      if (i > 1) return;
+      // usar lateralidad (Left/Right) para asignar un slot ESTABLE entre frames,
+      // en vez del índice del array (que MediaPipe puede reordenar frame a frame)
+      const label = results.multiHandedness && results.multiHandedness[i] ? results.multiHandedness[i].label : null;
+      const slot = label === 'Right' ? 1 : 0;
+      if (slot > 1) return;
       const tip = lm[8]; // punta del índice
       if (!tip || !isFinite(tip.x) || !isFinite(tip.y)){ return; }
       // la imagen del modelo NO está espejada; el canvas/video sí (scaleX(-1)) -> invertir x
@@ -286,7 +302,16 @@ hands.onResults((results) => {
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      const st = handState[i];
+      const st = handState[slot];
+      const now = performance.now();
+      if (now - st.lastSeen > 250){
+        // esta mano estuvo ausente un rato: no arrastrar posición vieja, reiniciar limpio
+        st.smoothY = null;
+        st.prevY = null;
+        st.prevDy = 0;
+      }
+      st.lastSeen = now;
+
       // suavizado exponencial de la posición y, para filtrar ruido del landmark
       if (st.smoothY === null) st.smoothY = ny;
       st.smoothY = st.smoothY * SMOOTHING + ny * (1 - SMOOTHING);
