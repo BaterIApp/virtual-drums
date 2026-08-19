@@ -264,6 +264,7 @@ function processResults(result){
   drawZones();
 
   let visibleCount = 0;
+  const rawCount = result.landmarks ? result.landmarks.length : 0;
   const seenLabels = new Set();
 
   if (result.landmarks && result.landmarks.length){
@@ -319,7 +320,7 @@ function processResults(result){
 
   const dL = handState.Left.prevDy.toFixed(3);
   const dR = handState.Right.prevDy.toFixed(3);
-  debugEl.textContent = `manos: ${visibleCount}\ndyL: ${dL}  dyR: ${dR}\nzonas: ${zones.length}`;
+  debugEl.textContent = `manos(crudo/filtrado): ${rawCount}/${visibleCount}\ndyL: ${dL}  dyR: ${dR}\nzonas: ${zones.length}`;
 }
 
 // ---------- CÁMARA + LOOP ----------
@@ -333,7 +334,7 @@ async function initModel(){
   handLandmarker = await HandLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-      delegate: "GPU"
+      delegate: "CPU"
     },
     runningMode: "VIDEO",
     numHands: 2,
