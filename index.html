@@ -29,8 +29,10 @@
     <button id="startBtn">▶ Iniciar cámara</button>
     <button id="calBtn" disabled>🎯 Calibrar</button>
     <button id="resetBtn">↺ Reset</button>
+    <button id="testSoundBtn">🔊 Probar sonido</button>
   </div>
   <div id="calLabel"></div>
+  <div id="debug" style="position:absolute; top:70px; right:14px; z-index:10; color:#4ade80; font-size:12px; background:rgba(10,10,15,.75); padding:6px 10px; border-radius:8px; font-family:monospace; text-align:right;"></div>
   <div id="status">Toca "Iniciar cámara" para comenzar.</div>
 </div>
 
@@ -46,6 +48,8 @@ const calBtn = document.getElementById('calBtn');
 const resetBtn = document.getElementById('resetBtn');
 const statusEl = document.getElementById('status');
 const calLabel = document.getElementById('calLabel');
+const debugEl = document.getElementById('debug');
+const testSoundBtn = document.getElementById('testSoundBtn');
 
 let W = 0, H = 0;
 function resize(){
@@ -66,6 +70,17 @@ function initAudio(){
   const data = noiseBuffer.getChannelData(0);
   for (let i=0;i<bufSize;i++) data[i] = Math.random()*2-1;
 }
+
+function ensureAudioRunning(){
+  if (!actx) initAudio();
+  if (actx.state !== 'running') actx.resume();
+}
+
+testSoundBtn.addEventListener('click', () => {
+  ensureAudioRunning();
+  playKick();
+  statusEl.textContent = 'Si escuchaste el kick, el audio funciona bien. AudioContext state: ' + actx.state;
+});
 
 function envGain(g, start, peak, end, t0, atk, dec){
   g.gain.cancelScheduledValues(t0);
@@ -207,7 +222,7 @@ hands.setOptions({
 const handState = [ {prevY:null, prevDy:0}, {prevY:null, prevDy:0} ];
 const lastHit = {}; // por nombre de zona
 const COOLDOWN_MS = 130;
-const VELOCITY_THRESHOLD = 0.018; // fracción de altura por frame
+const VELOCITY_THRESHOLD = 0.010; // fracción de altura por frame (bajado para celular)
 
 function checkZoneHit(nx, ny){
   for (const z of zones){
@@ -245,6 +260,10 @@ hands.onResults((results) => {
     ctx.textAlign = 'center';
     ctx.fillText(z.name, cx, cy+5);
   }
+
+  const handCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+  let debugDy = handState[0].prevDy;
+  debugEl.textContent = `manos: ${handCount} | dy: ${debugDy.toFixed(3)} | zonas: ${zones.length}`;
 
   if (results.multiHandLandmarks){
     results.multiHandLandmarks.forEach((lm, i) => {
@@ -286,7 +305,7 @@ startBtn.addEventListener('click', async () => {
   startBtn.disabled = true;
   startBtn.textContent = 'Cargando...';
   try {
-    if (!actx) initAudio();
+    ensureAudioRunning();
     camera = new Camera(video, {
       onFrame: async () => { await hands.send({ image: video }); },
       width: 640,
@@ -307,7 +326,7 @@ startBtn.addEventListener('click', async () => {
 });
 
 calBtn.addEventListener('click', () => {
-  if (!actx) initAudio();
+  ensureAudioRunning();
   startCalibration();
 });
 </script>
