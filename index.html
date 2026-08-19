@@ -219,10 +219,11 @@ hands.setOptions({
 });
 
 // estado por slot de mano (0 y 1)
-const handState = [ {prevY:null, prevDy:0}, {prevY:null, prevDy:0} ];
+const handState = [ {prevY:null, prevDy:0, smoothY:null}, {prevY:null, prevDy:0, smoothY:null} ];
 const lastHit = {}; // por nombre de zona
 const COOLDOWN_MS = 130;
-const VELOCITY_THRESHOLD = 0.010; // fracción de altura por frame (bajado para celular)
+const VELOCITY_THRESHOLD = 0.008; // fracción de altura por frame, sobre la señal ya suavizada
+const SMOOTHING = 0.4; // 0 = sin suavizar, más alto = más suave pero más lag
 
 function checkZoneHit(nx, ny){
   for (const z of zones){
@@ -261,14 +262,17 @@ hands.onResults((results) => {
     ctx.fillText(z.name, cx, cy+5);
   }
 
-  const handCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+  const handCount = results.multiHandLandmarks ? Math.min(results.multiHandLandmarks.length, 2) : 0;
   let debugDy = handState[0].prevDy;
+  if (!isFinite(debugDy)) debugDy = 0;
+  debugDy = Math.max(-1, Math.min(1, debugDy));
   debugEl.textContent = `manos: ${handCount} | dy: ${debugDy.toFixed(3)} | zonas: ${zones.length}`;
 
   if (results.multiHandLandmarks){
     results.multiHandLandmarks.forEach((lm, i) => {
       if (i > 1) return;
       const tip = lm[8]; // punta del índice
+      if (!tip || !isFinite(tip.x) || !isFinite(tip.y)){ return; }
       // la imagen del modelo NO está espejada; el canvas/video sí (scaleX(-1)) -> invertir x
       const nx = 1 - tip.x;
       const ny = tip.y;
@@ -283,8 +287,13 @@ hands.onResults((results) => {
       ctx.stroke();
 
       const st = handState[i];
+      // suavizado exponencial de la posición y, para filtrar ruido del landmark
+      if (st.smoothY === null) st.smoothY = ny;
+      st.smoothY = st.smoothY * SMOOTHING + ny * (1 - SMOOTHING);
+      const smY = st.smoothY;
+
       if (st.prevY !== null){
-        const dy = ny - st.prevY; // positivo = bajando
+        const dy = smY - st.prevY; // positivo = bajando, ya sobre señal suavizada
         const wasFalling = st.prevDy > VELOCITY_THRESHOLD;
         const nowSlowing = dy < st.prevDy * 0.5;
         if (wasFalling && nowSlowing && !calibrating){
@@ -293,7 +302,7 @@ hands.onResults((results) => {
         }
         st.prevDy = dy;
       }
-      st.prevY = ny;
+      st.prevY = smY;
     });
   }
 });
