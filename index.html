@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Batería Virtual</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { height:100%; overflow:hidden; background:#0a0a0f; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+  #stage { position:relative; width:100vw; height:100vh; }
+  video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
+  #ui { position:absolute; top:0; left:0; width:100%; z-index:10; padding:14px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button { border:none; border-radius:10px; padding:10px 16px; font-size:14px; font-weight:600; color:#fff; background:#1e1e2e; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+  button:active { transform:scale(.96); }
+  #startBtn { background:linear-gradient(135deg,#7c3aed,#4f46e5); }
+  #calBtn { background:linear-gradient(135deg,#f59e0b,#d97706); }
+  #calBtn.active { background:linear-gradient(135deg,#22c55e,#16a34a); }
+  #resetBtn { background:#3f3f52; }
+  #status { position:absolute; bottom:16px; left:14px; right:14px; z-index:10; color:#e5e5f0; font-size:13px; background:rgba(10,10,15,.7); padding:10px 14px; border-radius:10px; line-height:1.4; }
+  #calLabel { position:absolute; top:70px; left:14px; z-index:10; color:#facc15; font-size:15px; font-weight:700; background:rgba(10,10,15,.75); padding:8px 14px; border-radius:10px; display:none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="canvas"></canvas>
+  <div id="ui">
+    <button id="startBtn">▶ Iniciar cámara</button>
+    <button id="calBtn" disabled>🎯 Calibrar</button>
+    <button id="resetBtn">↺ Reset</button>
+  </div>
+  <div id="calLabel"></div>
+  <div id="status">Toca "Iniciar cámara" para comenzar.</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const startBtn = document.getElementById('startBtn');
+const calBtn = document.getElementById('calBtn');
+const resetBtn = document.getElementById('resetBtn');
+const statusEl = document.getElementById('status');
+const calLabel = document.getElementById('calLabel');
+
+let W = 0, H = 0;
+function resize(){
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ---------- AUDIO ----------
+let actx = null;
+let noiseBuffer = null;
+
+function initAudio(){
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  const bufSize = actx.sampleRate * 1;
+  noiseBuffer = actx.createBuffer(1, bufSize, actx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i=0;i<bufSize;i++) data[i] = Math.random()*2-1;
+}
+
+function envGain(g, start, peak, end, t0, atk, dec){
+  g.gain.cancelScheduledValues(t0);
+  g.gain.setValueAtTime(start, t0);
+  g.gain.linearRampToValueAtTime(peak, t0+atk);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+atk+dec);
+}
+
+function playKick(){
+  const t0 = actx.currentTime;
+  const osc = actx.createOscillator();
+  const g = actx.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(150, t0);
+  osc.frequency.exponentialRampToValueAtTime(40, t0+0.15);
+  envGain(g, 0.001, 1, 0.15, t0, 0.005, 0.15);
+  osc.connect(g); g.connect(actx.destination);
+  osc.start(t0); osc.stop(t0+0.2);
+}
+
+function playSnare(){
+  const t0 = actx.currentTime;
+  const src = actx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const bp = actx.createBiquadFilter();
+  bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=0.8;
+  const g = actx.createGain();
+  envGain(g, 0.001, 0.9, 0.15, t0, 0.002, 0.15);
+  src.connect(bp); bp.connect(g); g.connect(actx.destination);
+  const osc = actx.createOscillator();
+  const g2 = actx.createGain();
+  osc.type='triangle'; osc.frequency.value=200;
+  envGain(g2, 0.001, 0.4, 0.1, t0, 0.002, 0.1);
+  osc.connect(g2); g2.connect(actx.destination);
+  src.start(t0); src.stop(t0+0.2);
+  osc.start(t0); osc.stop(t0+0.15);
+}
+
+function playHihat(){
+  const t0 = actx.currentTime;
+  const src = actx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const hp = actx.createBiquadFilter();
+  hp.type='highpass'; hp.frequency.value=7000;
+  const g = actx.createGain();
+  envGain(g, 0.001, 0.5, 0.06, t0, 0.001, 0.06);
+  src.connect(hp); hp.connect(g); g.connect(actx.destination);
+  src.start(t0); src.stop(t0+0.08);
+}
+
+function playTom(){
+  const t0 = actx.currentTime;
+  const osc = actx.createOscillator();
+  const g = actx.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(220, t0);
+  osc.frequency.exponentialRampToValueAtTime(90, t0+0.2);
+  envGain(g, 0.001, 0.9, 0.2, t0, 0.005, 0.2);
+  osc.connect(g); g.connect(actx.destination);
+  osc.start(t0); osc.stop(t0+0.25);
+}
+
+function playCrash(){
+  const t0 = actx.currentTime;
+  const src = actx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const hp = actx.createBiquadFilter();
+  hp.type='highpass'; hp.frequency.value=5000;
+  const g = actx.createGain();
+  envGain(g, 0.001, 0.6, 0.8, t0, 0.002, 0.8);
+  src.connect(hp); hp.connect(g); g.connect(actx.destination);
+  src.start(t0); src.stop(t0+0.9);
+}
+
+const SOUND_MAP = { Kick:playKick, Snare:playSnare, HiHat:playHihat, Tom:playTom, Crash:playCrash };
+const ZONE_COLORS = { Kick:'#ef4444', Snare:'#3b82f6', HiHat:'#eab308', Tom:'#22c55e', Crash:'#f97316' };
+const ZONE_ORDER = ['Kick','Snare','HiHat','Tom','Crash'];
+
+// ---------- CALIBRACIÓN ----------
+let zones = []; // {name, x, y, r} normalizado 0-1 (coords ya en espejo/pantalla)
+let calibrating = false;
+let calIndex = 0;
+
+function loadZones(){
+  const saved = localStorageSafe('drumZones');
+  if (saved) { try { zones = JSON.parse(saved); } catch(e){ zones = []; } }
+}
+function saveZones(){ localStorageSafe('drumZones', JSON.stringify(zones)); }
+function localStorageSafe(key, val){
+  try {
+    if (val === undefined) return window.localStorage.getItem(key);
+    window.localStorage.setItem(key, val);
+  } catch(e){ return null; }
+}
+
+function startCalibration(){
+  zones = [];
+  calIndex = 0;
+  calibrating = true;
+  calLabel.style.display = 'block';
+  calLabel.textContent = `Toca la pantalla donde va: ${ZONE_ORDER[calIndex]}`;
+  calBtn.classList.add('active');
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (!calibrating) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  zones.push({ name: ZONE_ORDER[calIndex], x, y, r: 0.09 });
+  calIndex++;
+  if (calIndex >= ZONE_ORDER.length){
+    calibrating = false;
+    calLabel.style.display = 'none';
+    calBtn.classList.remove('active');
+    saveZones();
+    statusEl.textContent = 'Calibración lista. ¡A tocar!';
+  } else {
+    calLabel.textContent = `Toca la pantalla donde va: ${ZONE_ORDER[calIndex]}`;
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  zones = [];
+  saveZones();
+  statusEl.textContent = 'Zonas borradas. Calibra de nuevo.';
+});
+
+// ---------- HAND TRACKING + HIT DETECTION ----------
+const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 0,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.5
+});
+
+// estado por slot de mano (0 y 1)
+const handState = [ {prevY:null, prevDy:0}, {prevY:null, prevDy:0} ];
+const lastHit = {}; // por nombre de zona
+const COOLDOWN_MS = 130;
+const VELOCITY_THRESHOLD = 0.018; // fracción de altura por frame
+
+function checkZoneHit(nx, ny){
+  for (const z of zones){
+    const dx = nx - z.x, dy = ny - z.y;
+    if (Math.sqrt(dx*dx + dy*dy) < z.r){
+      const now = performance.now();
+      if (!lastHit[z.name] || now - lastHit[z.name] > COOLDOWN_MS){
+        lastHit[z.name] = now;
+        SOUND_MAP[z.name] && SOUND_MAP[z.name]();
+        return z.name;
+      }
+    }
+  }
+  return null;
+}
+
+let flashZones = {}; // feedback visual
+
+hands.onResults((results) => {
+  ctx.clearRect(0,0,W,H);
+
+  // dibujar zonas calibradas
+  for (const z of zones){
+    const cx = z.x*W, cy = z.y*H, r = z.r*W;
+    const flashing = flashZones[z.name] && performance.now() - flashZones[z.name] < 120;
+    ctx.beginPath();
+    ctx.arc(cx, cy, flashing ? r*1.25 : r, 0, Math.PI*2);
+    ctx.fillStyle = ZONE_COLORS[z.name] + (flashing ? 'aa' : '33');
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = ZONE_COLORS[z.name];
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(z.name, cx, cy+5);
+  }
+
+  if (results.multiHandLandmarks){
+    results.multiHandLandmarks.forEach((lm, i) => {
+      if (i > 1) return;
+      const tip = lm[8]; // punta del índice
+      // la imagen del modelo NO está espejada; el canvas/video sí (scaleX(-1)) -> invertir x
+      const nx = 1 - tip.x;
+      const ny = tip.y;
+
+      // dibujar punto de la mano
+      ctx.beginPath();
+      ctx.arc(nx*W, ny*H, 10, 0, Math.PI*2);
+      ctx.fillStyle = '#ffffffcc';
+      ctx.fill();
+      ctx.strokeStyle = '#7c3aed';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      const st = handState[i];
+      if (st.prevY !== null){
+        const dy = ny - st.prevY; // positivo = bajando
+        const wasFalling = st.prevDy > VELOCITY_THRESHOLD;
+        const nowSlowing = dy < st.prevDy * 0.5;
+        if (wasFalling && nowSlowing && !calibrating){
+          const hitName = checkZoneHit(nx, ny);
+          if (hitName) flashZones[hitName] = performance.now();
+        }
+        st.prevDy = dy;
+      }
+      st.prevY = ny;
+    });
+  }
+});
+
+// ---------- CÁMARA ----------
+let camera = null;
+
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  startBtn.textContent = 'Cargando...';
+  try {
+    if (!actx) initAudio();
+    camera = new Camera(video, {
+      onFrame: async () => { await hands.send({ image: video }); },
+      width: 640,
+      height: 480
+    });
+    await camera.start();
+    startBtn.style.display = 'none';
+    calBtn.disabled = false;
+    loadZones();
+    statusEl.textContent = zones.length
+      ? 'Cámara activa. Ya tienes zonas calibradas — a tocar.'
+      : 'Cámara activa. Toca "Calibrar" para definir tu batería.';
+  } catch (err){
+    statusEl.textContent = 'Error accediendo a la cámara: ' + err.message + '. ¿Diste permiso de cámara y estás en HTTPS?';
+    startBtn.disabled = false;
+    startBtn.textContent = '▶ Iniciar cámara';
+  }
+});
+
+calBtn.addEventListener('click', () => {
+  if (!actx) initAudio();
+  startCalibration();
+});
+</script>
+</body>
+</html>
