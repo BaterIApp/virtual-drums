@@ -17,10 +17,11 @@
   #calBtn { background:linear-gradient(135deg,#f59e0b,#d97706); }
   #calBtn.active { background:linear-gradient(135deg,#22c55e,#16a34a); }
   #resetBtn { background:#3f3f52; }
+  #captureBtn { background:linear-gradient(135deg,#06b6d4,#0891b2); display:none; }
   #status { position:absolute; bottom:16px; left:14px; right:14px; z-index:10; color:#e5e5f0; font-size:13px; background:rgba(10,10,15,.7); padding:10px 14px; border-radius:10px; line-height:1.4; }
-  #calLabel { position:absolute; top:70px; left:14px; z-index:10; color:#facc15; font-size:15px; font-weight:700; background:rgba(10,10,15,.75); padding:8px 14px; border-radius:10px; display:none; }
-  #debug { position:absolute; top:70px; right:14px; z-index:10; color:#4ade80; font-size:12px; background:rgba(10,10,15,.75); padding:6px 10px; border-radius:8px; font-family:monospace; text-align:right; white-space:pre; }
-  #jsError { position:absolute; top:130px; left:14px; right:14px; z-index:20; color:#fff; font-size:12px; background:rgba(220,38,38,.92); padding:10px; border-radius:8px; font-family:monospace; display:none; max-height:40vh; overflow:auto; white-space:pre-wrap; }
+  #calLabel { position:absolute; top:70px; left:14px; right:14px; z-index:10; color:#facc15; font-size:15px; font-weight:700; background:rgba(10,10,15,.75); padding:8px 14px; border-radius:10px; display:none; }
+  #debug { position:absolute; top:130px; right:14px; z-index:10; color:#4ade80; font-size:11px; background:rgba(10,10,15,.75); padding:6px 10px; border-radius:8px; font-family:monospace; text-align:right; white-space:pre; }
+  #jsError { position:absolute; top:190px; left:14px; right:14px; z-index:20; color:#fff; font-size:12px; background:rgba(220,38,38,.92); padding:10px; border-radius:8px; font-family:monospace; display:none; max-height:35vh; overflow:auto; white-space:pre-wrap; }
 </style>
 </head>
 <body>
@@ -34,13 +35,14 @@
     <button id="testSoundBtn">🔊 Probar sonido</button>
   </div>
   <div id="calLabel"></div>
+  <button id="captureBtn">📸 Capturar posición</button>
   <div id="debug"></div>
   <div id="jsError"></div>
   <div id="status">Toca "Iniciar cámara" para comenzar.</div>
 </div>
 
 <script type="module">
-import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+import { HandLandmarker, PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -49,6 +51,7 @@ const startBtn = document.getElementById('startBtn');
 const calBtn = document.getElementById('calBtn');
 const resetBtn = document.getElementById('resetBtn');
 const testSoundBtn = document.getElementById('testSoundBtn');
+const captureBtn = document.getElementById('captureBtn');
 const statusEl = document.getElementById('status');
 const calLabel = document.getElementById('calLabel');
 const debugEl = document.getElementById('debug');
@@ -62,17 +65,13 @@ window.addEventListener('error', (e) => showJsError('ERROR: ' + e.message + ' (l
 window.addEventListener('unhandledrejection', (e) => showJsError('PROMISE ERROR: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
 
 let W = 0, H = 0;
-function resize(){
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-}
+function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
 resize();
 window.addEventListener('resize', resize);
 
 // ---------- AUDIO ----------
 let actx = null;
 let noiseBuffer = null;
-
 function initAudio(){
   actx = new (window.AudioContext || window.webkitAudioContext)();
   const bufSize = actx.sampleRate * 1;
@@ -84,96 +83,126 @@ function ensureAudioRunning(){
   if (!actx) initAudio();
   if (actx.state !== 'running') actx.resume();
 }
-
-function envGain(g, start, peak, end, t0, atk, dec){
+function envGain(g, start, peak, t0, atk, dec){
   g.gain.cancelScheduledValues(t0);
   g.gain.setValueAtTime(start, t0);
   g.gain.linearRampToValueAtTime(peak, t0+atk);
   g.gain.exponentialRampToValueAtTime(0.0001, t0+atk+dec);
 }
-
 function playKick(){
   const t0 = actx.currentTime;
-  const osc = actx.createOscillator();
-  const g = actx.createGain();
+  const osc = actx.createOscillator(); const g = actx.createGain();
   osc.type='sine';
   osc.frequency.setValueAtTime(150, t0);
   osc.frequency.exponentialRampToValueAtTime(40, t0+0.15);
-  envGain(g, 0.001, 1, 0.15, t0, 0.005, 0.15);
+  envGain(g, 0.001, 1, t0, 0.005, 0.15);
   osc.connect(g); g.connect(actx.destination);
   osc.start(t0); osc.stop(t0+0.2);
 }
+function playKick2(){
+  // igual timbre que kick pero levemente distinto para diferenciar el segundo bombo al oído
+  const t0 = actx.currentTime;
+  const osc = actx.createOscillator(); const g = actx.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(165, t0);
+  osc.frequency.exponentialRampToValueAtTime(45, t0+0.13);
+  envGain(g, 0.001, 0.95, t0, 0.005, 0.13);
+  osc.connect(g); g.connect(actx.destination);
+  osc.start(t0); osc.stop(t0+0.18);
+}
 function playSnare(){
   const t0 = actx.currentTime;
-  const src = actx.createBufferSource();
-  src.buffer = noiseBuffer;
-  const bp = actx.createBiquadFilter();
-  bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=0.8;
-  const g = actx.createGain();
-  envGain(g, 0.001, 0.9, 0.15, t0, 0.002, 0.15);
+  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
+  const bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=0.8;
+  const g = actx.createGain(); envGain(g, 0.001, 0.9, t0, 0.002, 0.15);
   src.connect(bp); bp.connect(g); g.connect(actx.destination);
-  const osc = actx.createOscillator();
-  const g2 = actx.createGain();
-  osc.type='triangle'; osc.frequency.value=200;
-  envGain(g2, 0.001, 0.4, 0.1, t0, 0.002, 0.1);
+  const osc = actx.createOscillator(); const g2 = actx.createGain();
+  osc.type='triangle'; osc.frequency.value=200; envGain(g2, 0.001, 0.4, t0, 0.002, 0.1);
   osc.connect(g2); g2.connect(actx.destination);
-  src.start(t0); src.stop(t0+0.2);
-  osc.start(t0); osc.stop(t0+0.15);
+  src.start(t0); src.stop(t0+0.2); osc.start(t0); osc.stop(t0+0.15);
 }
-function playHihat(){
+function playHihatClosed(){
   const t0 = actx.currentTime;
-  const src = actx.createBufferSource();
-  src.buffer = noiseBuffer;
-  const hp = actx.createBiquadFilter();
-  hp.type='highpass'; hp.frequency.value=7000;
-  const g = actx.createGain();
-  envGain(g, 0.001, 0.5, 0.06, t0, 0.001, 0.06);
+  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
+  const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=7000;
+  const g = actx.createGain(); envGain(g, 0.001, 0.5, t0, 0.001, 0.06);
   src.connect(hp); hp.connect(g); g.connect(actx.destination);
   src.start(t0); src.stop(t0+0.08);
 }
+function playHihatOpen(){
+  const t0 = actx.currentTime;
+  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
+  const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000;
+  const g = actx.createGain(); envGain(g, 0.001, 0.5, t0, 0.001, 0.35);
+  src.connect(hp); hp.connect(g); g.connect(actx.destination);
+  src.start(t0); src.stop(t0+0.4);
+}
+function playPedalChick(){
+  // sonido corto del pedal de hi-hat al cerrarse, sin que la mano lo toque
+  const t0 = actx.currentTime;
+  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
+  const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=8000;
+  const g = actx.createGain(); envGain(g, 0.001, 0.25, t0, 0.001, 0.02);
+  src.connect(hp); hp.connect(g); g.connect(actx.destination);
+  src.start(t0); src.stop(t0+0.04);
+}
 function playTom(){
   const t0 = actx.currentTime;
-  const osc = actx.createOscillator();
-  const g = actx.createGain();
+  const osc = actx.createOscillator(); const g = actx.createGain();
   osc.type='sine';
   osc.frequency.setValueAtTime(220, t0);
   osc.frequency.exponentialRampToValueAtTime(90, t0+0.2);
-  envGain(g, 0.001, 0.9, 0.2, t0, 0.005, 0.2);
+  envGain(g, 0.001, 0.9, t0, 0.005, 0.2);
   osc.connect(g); g.connect(actx.destination);
   osc.start(t0); osc.stop(t0+0.25);
 }
 function playCrash(){
   const t0 = actx.currentTime;
-  const src = actx.createBufferSource();
-  src.buffer = noiseBuffer;
-  const hp = actx.createBiquadFilter();
-  hp.type='highpass'; hp.frequency.value=5000;
-  const g = actx.createGain();
-  envGain(g, 0.001, 0.6, 0.8, t0, 0.002, 0.8);
+  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
+  const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=5000;
+  const g = actx.createGain(); envGain(g, 0.001, 0.6, t0, 0.002, 0.8);
   src.connect(hp); hp.connect(g); g.connect(actx.destination);
   src.start(t0); src.stop(t0+0.9);
 }
 
-const SOUND_MAP = { Kick:playKick, Snare:playSnare, HiHat:playHihat, Tom:playTom, Crash:playCrash };
-const ZONE_COLORS = { Kick:'#ef4444', Snare:'#3b82f6', HiHat:'#eab308', Tom:'#22c55e', Crash:'#f97316' };
-const ZONE_ORDER = ['Kick','Snare','HiHat','Tom','Crash'];
+// HiHat suena distinto según el estado del pedal izquierdo
+function playHihat(){ hihatOpen ? playHihatOpen() : playHihatClosed(); }
+
+const SOUND_MAP = { Kick:playKick, Kick2:playKick2, Snare:playSnare, HiHat:playHihat, Tom:playTom, Crash:playCrash };
+const ZONE_COLORS = { Kick:'#ef4444', Kick2:'#a855f7', Snare:'#3b82f6', HiHat:'#eab308', Tom:'#22c55e', Crash:'#f97316' };
+// tipo de disparo por zona: 'hand' = cualquier mano, 'footR' = pie derecho, 'footL' = pie izquierdo
+const ZONE_TRIGGER = { Kick:'footR', Kick2:'footL', Snare:'hand', HiHat:'hand', Tom:'hand', Crash:'hand' };
+const ZONE_ORDER = ['Kick','Snare','HiHat','Tom','Crash','Kick2'];
+const ZONE_PROMPTS = {
+  Kick: 'Toca en el piso donde está tu PEDAL DE KICK (pie derecho)',
+  Snare: 'Toca donde va el SNARE',
+  HiHat: 'Toca donde va el HI-HAT',
+  Tom: 'Toca donde va el TOM',
+  Crash: 'Toca donde va el CRASH',
+  Kick2: 'Toca en el piso donde está tu SEGUNDO PEDAL / DOBLE BOMBO (pie izquierdo)'
+};
 
 testSoundBtn.addEventListener('click', () => {
-  ensureAudioRunning();
-  playKick();
+  ensureAudioRunning(); playKick();
   statusEl.textContent = 'Si escuchaste el kick, el audio funciona bien. AudioContext state: ' + actx.state;
 });
 
 // ---------- CALIBRACIÓN ----------
 let zones = [];
-let calibrating = false;
+let hihatCalib = { openY: null, closedY: null }; // rango vertical del tobillo izquierdo
+let calStage = 'idle'; // idle | zones | hihat_open | hihat_closed
 let calIndex = 0;
 
-function loadZones(){
-  const saved = localStorageSafe('drumZones');
-  if (saved) { try { zones = JSON.parse(saved); } catch(e){ zones = []; } }
+function loadAll(){
+  const savedZones = localStorageSafe('drumZones');
+  if (savedZones) { try { zones = JSON.parse(savedZones); } catch(e){ zones = []; } }
+  const savedHihat = localStorageSafe('hihatCalib');
+  if (savedHihat) { try { hihatCalib = JSON.parse(savedHihat); } catch(e){} }
 }
-function saveZones(){ localStorageSafe('drumZones', JSON.stringify(zones)); }
+function saveAll(){
+  localStorageSafe('drumZones', JSON.stringify(zones));
+  localStorageSafe('hihatCalib', JSON.stringify(hihatCalib));
+}
 function localStorageSafe(key, val){
   try {
     if (val === undefined) return window.localStorage.getItem(key);
@@ -183,51 +212,92 @@ function localStorageSafe(key, val){
 
 function startCalibration(){
   zones = [];
+  hihatCalib = { openY: null, closedY: null };
   calIndex = 0;
-  calibrating = true;
+  calStage = 'zones';
   calLabel.style.display = 'block';
-  calLabel.textContent = `Toca la pantalla donde va: ${ZONE_ORDER[calIndex]}`;
+  captureBtn.style.display = 'none';
+  calLabel.textContent = ZONE_PROMPTS[ZONE_ORDER[calIndex]];
   calBtn.classList.add('active');
 }
 
 canvas.addEventListener('pointerdown', (e) => {
-  if (!calibrating) return;
+  if (calStage !== 'zones') return;
   const rect = canvas.getBoundingClientRect();
   const x = (e.clientX - rect.left) / rect.width;
   const y = (e.clientY - rect.top) / rect.height;
   zones.push({ name: ZONE_ORDER[calIndex], x, y, r: 0.09 });
   calIndex++;
   if (calIndex >= ZONE_ORDER.length){
-    calibrating = false;
-    calLabel.style.display = 'none';
-    calBtn.classList.remove('active');
-    saveZones();
-    statusEl.textContent = 'Calibración lista. ¡A tocar!';
+    calStage = 'hihat_open';
+    calLabel.textContent = 'Levanta el TALÓN del pie izquierdo (hi-hat abierto) y mantenlo así. Toca "Capturar posición".';
+    captureBtn.style.display = 'inline-block';
   } else {
-    calLabel.textContent = `Toca la pantalla donde va: ${ZONE_ORDER[calIndex]}`;
+    calLabel.textContent = ZONE_PROMPTS[ZONE_ORDER[calIndex]];
+  }
+});
+
+captureBtn.addEventListener('click', () => {
+  if (calStage === 'hihat_open'){
+    if (points.LeftAnkle.smoothY === null){
+      statusEl.textContent = 'No detecto tu pie izquierdo todavía — asegúrate de que se vea en cuadro.';
+      return;
+    }
+    hihatCalib.openY = points.LeftAnkle.smoothY;
+    calStage = 'hihat_closed';
+    calLabel.textContent = 'Ahora PISA fuerte, apoya el pie izquierdo completo. Toca "Capturar posición".';
+  } else if (calStage === 'hihat_closed'){
+    if (points.LeftAnkle.smoothY === null){
+      statusEl.textContent = 'No detecto tu pie izquierdo todavía — asegúrate de que se vea en cuadro.';
+      return;
+    }
+    hihatCalib.closedY = points.LeftAnkle.smoothY;
+    calStage = 'idle';
+    calLabel.style.display = 'none';
+    captureBtn.style.display = 'none';
+    calBtn.classList.remove('active');
+    saveAll();
+    statusEl.textContent = 'Calibración completa (manos + pies + hi-hat). ¡A tocar!';
   }
 });
 
 resetBtn.addEventListener('click', () => {
-  zones = [];
-  saveZones();
-  statusEl.textContent = 'Zonas borradas. Calibra de nuevo.';
+  zones = []; hihatCalib = { openY:null, closedY:null };
+  saveAll();
+  statusEl.textContent = 'Todo borrado. Calibra de nuevo.';
 });
 
-// ---------- HIT DETECTION ----------
-const handState = {
-  Left:  { prevY:null, prevDy:0, smoothY:null, lastSeen:0 },
-  Right: { prevY:null, prevDy:0, smoothY:null, lastSeen:0 }
+// ---------- TRACKING GENÉRICO (manos y pies comparten la misma lógica de golpe) ----------
+function newPointState(){ return { prevY:null, prevDy:0, smoothY:null, lastSeen:0 }; }
+const points = {
+  RightHand: newPointState(),
+  LeftHand: newPointState(),
+  RightFoot: newPointState(),
+  LeftFoot: newPointState(),
+  LeftAnkle: newPointState() // solo para estado del hi-hat, no dispara golpes
 };
+
 const lastHit = {};
 const COOLDOWN_MS = 80;
-const VELOCITY_THRESHOLD = 0.009;
+const HAND_VELOCITY_THRESHOLD = 0.009;
+const FOOT_VELOCITY_THRESHOLD = 0.006; // el movimiento del pedal es más chico que el de la mano
 const SMOOTHING = 0.25;
 const MIN_CONFIDENCE = 0.6;
+const HIHAT_HYSTERESIS = 0.15; // % del rango calibrado, evita parpadeo del estado abierto/cerrado
+let hihatOpen = true;
 let flashZones = {};
 
-function checkZoneHit(nx, ny){
+function updateSmoothed(st, ny, now){
+  if (now - st.lastSeen > 250){ st.smoothY = null; st.prevY = null; st.prevDy = 0; }
+  st.lastSeen = now;
+  if (st.smoothY === null) st.smoothY = ny;
+  st.smoothY = st.smoothY * SMOOTHING + ny * (1 - SMOOTHING);
+  return st.smoothY;
+}
+
+function checkZoneHit(nx, ny, allowedTrigger){
   for (const z of zones){
+    if (ZONE_TRIGGER[z.name] !== allowedTrigger) continue;
     const dx = nx - z.x, dy = ny - z.y;
     if (Math.sqrt(dx*dx + dy*dy) < z.r){
       const now = performance.now();
@@ -239,6 +309,39 @@ function checkZoneHit(nx, ny){
     }
   }
   return null;
+}
+
+function processHitPoint(label, nx, ny, threshold, triggerType){
+  const st = points[label];
+  const now = performance.now();
+  const smY = updateSmoothed(st, ny, now);
+  if (st.prevY !== null){
+    const dy = smY - st.prevY;
+    const wasFalling = st.prevDy > threshold;
+    const nowSlowing = dy < st.prevDy * 0.5;
+    if (wasFalling && nowSlowing && calStage === 'idle'){
+      const hitName = checkZoneHit(nx, ny, triggerType);
+      if (hitName) flashZones[hitName] = now;
+    }
+    st.prevDy = dy;
+  }
+  st.prevY = smY;
+}
+
+function updateHihatState(ny){
+  const now = performance.now();
+  const smY = updateSmoothed(points.LeftAnkle, ny, now);
+  if (hihatCalib.openY === null || hihatCalib.closedY === null) return; // sin calibrar, no hace nada
+  const range = hihatCalib.closedY - hihatCalib.openY; // closedY > openY normalmente (más abajo = más grande en pantalla)
+  if (Math.abs(range) < 0.001) return;
+  const t = (smY - hihatCalib.openY) / range; // 0 = abierto, 1 = cerrado
+  const margin = HIHAT_HYSTERESIS;
+  if (hihatOpen && t > 0.5 + margin){
+    hihatOpen = false;
+    if (calStage === 'idle') playPedalChick();
+  } else if (!hihatOpen && t < 0.5 - margin){
+    hihatOpen = true;
+  }
 }
 
 function drawZones(){
@@ -253,81 +356,80 @@ function drawZones(){
     ctx.strokeStyle = ZONE_COLORS[z.name];
     ctx.stroke();
     ctx.fillStyle = '#fff';
-    ctx.font = 'bold 14px sans-serif';
+    ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(z.name, cx, cy+5);
   }
 }
 
-function processResults(result){
-  ctx.clearRect(0,0,W,H);
-  drawZones();
+function drawPoint(nx, ny, color){
+  ctx.beginPath();
+  ctx.arc(nx*W, ny*H, 10, 0, Math.PI*2);
+  ctx.fillStyle = '#ffffffcc'; ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
+}
 
-  let visibleCount = 0;
-  const rawCount = result.landmarks ? result.landmarks.length : 0;
-  const seenLabels = new Set();
+// ---------- PROCESAMIENTO POR FRAME ----------
+let handsRaw = 0, handsFiltered = 0, poseDetected = false;
 
+function processHandResults(result){
+  handsFiltered = 0;
+  handsRaw = result.landmarks ? result.landmarks.length : 0;
   if (result.landmarks && result.landmarks.length){
     result.landmarks.forEach((lm, i) => {
       const handedness = result.handednesses && result.handednesses[i] ? result.handednesses[i][0] : null;
       const score = handedness ? handedness.score : 0;
-      if (score < MIN_CONFIDENCE) return; // filtra detecciones de baja confianza (manos fantasma)
-
-      // el modelo NO trabaja sobre imagen espejada, pero video/canvas sí (scaleX(-1)) -> invertimos etiqueta y x
+      if (score < MIN_CONFIDENCE) return;
       const rawLabel = handedness ? handedness.categoryName : (i===0?'Left':'Right');
-      const label = rawLabel === 'Left' ? 'Right' : 'Left'; // espejo
-      seenLabels.add(label);
-      visibleCount++;
+      const label = rawLabel === 'Left' ? 'Right' : 'Left'; // espejo visual
+      handsFiltered++;
 
-      const tip = lm[8]; // punta del índice
+      const tip = lm[8];
       if (!tip || !isFinite(tip.x) || !isFinite(tip.y)) return;
-      const nx = 1 - tip.x;
-      const ny = tip.y;
-      if (nx < -0.5 || nx > 1.5 || ny < -0.5 || ny > 1.5) return; // descarta coordenadas absurdas
+      const nx = 1 - tip.x, ny = tip.y;
+      if (nx < -0.5 || nx > 1.5 || ny < -0.5 || ny > 1.5) return;
 
-      ctx.beginPath();
-      ctx.arc(nx*W, ny*H, 10, 0, Math.PI*2);
-      ctx.fillStyle = '#ffffffcc';
-      ctx.fill();
-      ctx.strokeStyle = '#7c3aed';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      const st = handState[label];
-      const now = performance.now();
-      if (now - st.lastSeen > 250){
-        st.smoothY = null; st.prevY = null; st.prevDy = 0;
-      }
-      st.lastSeen = now;
-
-      if (st.smoothY === null) st.smoothY = ny;
-      st.smoothY = st.smoothY * SMOOTHING + ny * (1 - SMOOTHING);
-      const smY = st.smoothY;
-
-      if (st.prevY !== null){
-        const dy = smY - st.prevY;
-        const wasFalling = st.prevDy > VELOCITY_THRESHOLD;
-        const nowSlowing = dy < st.prevDy * 0.5;
-        if (wasFalling && nowSlowing && !calibrating){
-          const hitName = checkZoneHit(nx, ny);
-          if (hitName) flashZones[hitName] = now;
-        }
-        st.prevDy = dy;
-      }
-      st.prevY = smY;
+      drawPoint(nx, ny, '#7c3aed');
+      processHitPoint(label === 'Left' ? 'LeftHand' : 'RightHand', nx, ny, HAND_VELOCITY_THRESHOLD, 'hand');
     });
   }
-
-  const dL = handState.Left.prevDy.toFixed(3);
-  const dR = handState.Right.prevDy.toFixed(3);
-  debugEl.textContent = `manos(crudo/filtrado): ${rawCount}/${visibleCount}\ndyL: ${dL}  dyR: ${dR}\nzonas: ${zones.length}`;
 }
 
-// ---------- CÁMARA + LOOP ----------
+function processPoseResults(result){
+  poseDetected = !!(result.landmarks && result.landmarks.length);
+  if (!poseDetected) return;
+  const lm = result.landmarks[0]; // una sola persona
+  // índices estándar de pose: 31 = pie izquierdo (punta), 32 = pie derecho (punta), 27 = tobillo izquierdo
+  const rFootTip = lm[32], lFootTip = lm[31], lAnkle = lm[27];
+
+  if (rFootTip && isFinite(rFootTip.x) && isFinite(rFootTip.y)){
+    const nx = 1 - rFootTip.x, ny = rFootTip.y;
+    drawPoint(nx, ny, '#ef4444');
+    processHitPoint('RightFoot', nx, ny, FOOT_VELOCITY_THRESHOLD, 'footR');
+  }
+  if (lFootTip && isFinite(lFootTip.x) && isFinite(lFootTip.y)){
+    const nx = 1 - lFootTip.x, ny = lFootTip.y;
+    drawPoint(nx, ny, '#a855f7');
+    processHitPoint('LeftFoot', nx, ny, FOOT_VELOCITY_THRESHOLD, 'footL');
+  }
+  if (lAnkle && isFinite(lAnkle.x) && isFinite(lAnkle.y)){
+    updateHihatState(lAnkle.y);
+  }
+}
+
+function renderFrame(){
+  ctx.clearRect(0,0,W,H);
+  drawZones();
+  const hihatCalStatus = (hihatCalib.openY !== null && hihatCalib.closedY !== null) ? (hihatOpen ? 'ABIERTO' : 'CERRADO') : 'sin calibrar';
+  debugEl.textContent = `manos: ${handsRaw}/${handsFiltered}  pose: ${poseDetected ? 'si' : 'no'}\nzonas: ${zones.length}  hihat: ${hihatCalStatus}`;
+}
+
+// ---------- MODELOS + LOOP ----------
 let handLandmarker = null;
+let poseLandmarker = null;
 let running = false;
 
-async function initModel(){
+async function initModels(){
   const vision = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
   );
@@ -342,13 +444,28 @@ async function initModel(){
     minHandPresenceConfidence: 0.6,
     minTrackingConfidence: 0.5
   });
+  poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate: "CPU"
+    },
+    runningMode: "VIDEO",
+    numPoses: 1,
+    minPoseDetectionConfidence: 0.5,
+    minPosePresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
 }
 
 function loop(){
   if (!running) return;
-  if (video.readyState >= 2 && handLandmarker){
-    const result = handLandmarker.detectForVideo(video, performance.now());
-    processResults(result);
+  if (video.readyState >= 2 && handLandmarker && poseLandmarker){
+    const t = performance.now();
+    const handResult = handLandmarker.detectForVideo(video, t);
+    processHandResults(handResult);
+    const poseResult = poseLandmarker.detectForVideo(video, t);
+    processPoseResults(poseResult);
+    renderFrame();
   }
   requestAnimationFrame(loop);
 }
@@ -358,8 +475,8 @@ startBtn.addEventListener('click', async () => {
   startBtn.textContent = 'Cargando...';
   try {
     ensureAudioRunning();
-    statusEl.textContent = 'Cargando modelo de tracking...';
-    if (!handLandmarker) await initModel();
+    statusEl.textContent = 'Cargando modelos de tracking (manos + cuerpo)...';
+    if (!handLandmarker || !poseLandmarker) await initModels();
     statusEl.textContent = 'Pidiendo acceso a la cámara...';
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
@@ -371,10 +488,10 @@ startBtn.addEventListener('click', async () => {
     requestAnimationFrame(loop);
     startBtn.style.display = 'none';
     calBtn.disabled = false;
-    loadZones();
+    loadAll();
     statusEl.textContent = zones.length
-      ? 'Cámara activa. Ya tienes zonas calibradas — a tocar.'
-      : 'Cámara activa. Toca "Calibrar" para definir tu batería.';
+      ? 'Cámara activa. Ya tienes calibración guardada — a tocar.'
+      : 'Cámara activa. Toca "Calibrar" — asegúrate de que se vean tus manos Y tus pies en cuadro.';
   } catch (err){
     statusEl.textContent = 'Error: ' + err.message;
     showJsError('INIT ERROR: ' + err.message);
