@@ -279,8 +279,10 @@ const points = {
 
 const lastHit = {};
 const COOLDOWN_MS = 80;
-const HAND_VELOCITY_THRESHOLD = 0.009;
-const FOOT_VELOCITY_THRESHOLD = 0.006; // el movimiento del pedal es más chico que el de la mano
+const HAND_VELOCITY_FRACTION = 0.28; // fracción del ancho de hombros por frame para contar como golpe de mano
+const FOOT_VELOCITY_FRACTION = 0.16; // el movimiento del pedal es más chico que el de la mano
+const DEFAULT_SHOULDER_WIDTH = 0.18; // fallback si aún no se detecta el cuerpo
+let shoulderWidth = DEFAULT_SHOULDER_WIDTH;
 const SMOOTHING = 0.25;
 const MIN_CONFIDENCE = 0.6;
 const HIHAT_HYSTERESIS = 0.15; // % del rango calibrado, evita parpadeo del estado abierto/cerrado
@@ -296,22 +298,27 @@ function updateSmoothed(st, ny, now){
 }
 
 function checkZoneHit(nx, ny, allowedTrigger){
+  let best = null, bestDist = Infinity;
   for (const z of zones){
     if (ZONE_TRIGGER[z.name] !== allowedTrigger) continue;
     const dx = nx - z.x, dy = ny - z.y;
-    if (Math.sqrt(dx*dx + dy*dy) < z.r){
-      const now = performance.now();
-      if (!lastHit[z.name] || now - lastHit[z.name] > COOLDOWN_MS){
-        lastHit[z.name] = now;
-        SOUND_MAP[z.name] && SOUND_MAP[z.name]();
-        return z.name;
-      }
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < z.r && dist < bestDist){
+      best = z; bestDist = dist;
     }
+  }
+  if (!best) return null;
+  const now = performance.now();
+  if (!lastHit[best.name] || now - lastHit[best.name] > COOLDOWN_MS){
+    lastHit[best.name] = now;
+    SOUND_MAP[best.name] && SOUND_MAP[best.name]();
+    return best.name;
   }
   return null;
 }
 
-function processHitPoint(label, nx, ny, threshold, triggerType){
+function processHitPoint(label, nx, ny, velocityFraction, triggerType){
+  const threshold = velocityFraction * shoulderWidth;
   const st = points[label];
   const now = performance.now();
   const smY = updateSmoothed(st, ny, now);
@@ -390,7 +397,7 @@ function processHandResults(result){
       if (nx < -0.5 || nx > 1.5 || ny < -0.5 || ny > 1.5) return;
 
       drawPoint(nx, ny, '#7c3aed');
-      processHitPoint(label === 'Left' ? 'LeftHand' : 'RightHand', nx, ny, HAND_VELOCITY_THRESHOLD, 'hand');
+      processHitPoint(label === 'Left' ? 'LeftHand' : 'RightHand', nx, ny, HAND_VELOCITY_FRACTION, 'hand');
     });
   }
 }
@@ -399,21 +406,27 @@ function processPoseResults(result){
   poseDetected = !!(result.landmarks && result.landmarks.length);
   if (!poseDetected) return;
   const lm = result.landmarks[0]; // una sola persona
-  // índices estándar de pose: 31 = pie izquierdo (punta), 32 = pie derecho (punta), 27 = tobillo izquierdo
-  const rFootTip = lm[32], lFootTip = lm[31], lAnkle = lm[27];
+  // 11/12 = hombros, 31/32 = punta de pie, 29 = talón izquierdo
+  const lShoulder = lm[11], rShoulder = lm[12];
+  const rFootTip = lm[32], lFootTip = lm[31], lHeel = lm[29];
+
+  if (lShoulder && rShoulder && isFinite(lShoulder.x) && isFinite(rShoulder.x)){
+    const w = Math.abs(lShoulder.x - rShoulder.x);
+    if (w > 0.02) shoulderWidth = w; // ignora lecturas absurdamente chicas
+  }
 
   if (rFootTip && isFinite(rFootTip.x) && isFinite(rFootTip.y)){
     const nx = 1 - rFootTip.x, ny = rFootTip.y;
     drawPoint(nx, ny, '#ef4444');
-    processHitPoint('RightFoot', nx, ny, FOOT_VELOCITY_THRESHOLD, 'footR');
+    processHitPoint('RightFoot', nx, ny, FOOT_VELOCITY_FRACTION, 'footR');
   }
   if (lFootTip && isFinite(lFootTip.x) && isFinite(lFootTip.y)){
     const nx = 1 - lFootTip.x, ny = lFootTip.y;
     drawPoint(nx, ny, '#a855f7');
-    processHitPoint('LeftFoot', nx, ny, FOOT_VELOCITY_THRESHOLD, 'footL');
+    processHitPoint('LeftFoot', nx, ny, FOOT_VELOCITY_FRACTION, 'footL');
   }
-  if (lAnkle && isFinite(lAnkle.x) && isFinite(lAnkle.y)){
-    updateHihatState(lAnkle.y);
+  if (lHeel && isFinite(lHeel.x) && isFinite(lHeel.y)){
+    updateHihatState(lHeel.y);
   }
 }
 
@@ -421,7 +434,7 @@ function renderFrame(){
   ctx.clearRect(0,0,W,H);
   drawZones();
   const hihatCalStatus = (hihatCalib.openY !== null && hihatCalib.closedY !== null) ? (hihatOpen ? 'ABIERTO' : 'CERRADO') : 'sin calibrar';
-  debugEl.textContent = `manos: ${handsRaw}/${handsFiltered}  pose: ${poseDetected ? 'si' : 'no'}\nzonas: ${zones.length}  hihat: ${hihatCalStatus}`;
+  debugEl.textContent = `manos: ${handsRaw}/${handsFiltered}  pose: ${poseDetected ? 'si' : 'no'}\nhombros: ${shoulderWidth.toFixed(3)}\nzonas: ${zones.length}  hihat: ${hihatCalStatus}`;
 }
 
 // ---------- MODELOS + LOOP ----------
