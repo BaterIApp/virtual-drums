@@ -8,531 +8,449 @@
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { height:100%; overflow:hidden; background:#0a0a0f; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
   #stage { position:relative; width:100vw; height:100vh; }
-  video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+  video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; }
+  video.mirrored { transform:scaleX(-1); }
   canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
-  #ui { position:absolute; top:0; left:0; width:100%; z-index:10; padding:12px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-  button { border:none; border-radius:10px; padding:9px 14px; font-size:13px; font-weight:600; color:#fff; background:#1e1e2e; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+  #ui { position:absolute; top:0; left:0; width:100%; z-index:10; padding:10px; display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+  button { border:none; border-radius:9px; padding:8px 12px; font-size:12px; font-weight:600; color:#fff; background:#1e1e2e; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   button:active { transform:scale(.96); }
   #startBtn { background:linear-gradient(135deg,#7c3aed,#4f46e5); }
   #calBtn { background:linear-gradient(135deg,#f59e0b,#d97706); }
-  #calBtn.active { background:linear-gradient(135deg,#22c55e,#16a34a); }
+  #hihatBtn { background:linear-gradient(135deg,#0ea5e9,#0284c7); }
   #resetBtn { background:#3f3f52; }
-  #status { position:absolute; bottom:calc(12px + env(safe-area-inset-bottom, 0px)); left:12px; right:12px; z-index:10; color:#e5e5f0; font-size:12px; background:rgba(10,10,15,.72); padding:8px 12px; border-radius:10px; line-height:1.35; }
-  #calLabel { position:absolute; top:64px; left:12px; right:12px; z-index:12; color:#facc15; font-size:15px; font-weight:700; background:rgba(10,10,15,.8); padding:10px 14px; border-radius:10px; display:none; }
-  #captureBtn { position:absolute; left:50%; bottom:calc(120px + env(safe-area-inset-bottom, 0px)); transform:translateX(-50%); z-index:15; padding:16px 28px; font-size:16px; background:linear-gradient(135deg,#06b6d4,#0891b2); display:none; white-space:nowrap; }
-  #sizePanel { position:absolute; bottom:calc(58px + env(safe-area-inset-bottom, 0px)); left:12px; right:12px; z-index:11; background:rgba(10,10,15,.72); padding:8px 12px; border-radius:10px; display:flex; align-items:center; gap:10px; }
+  #status { position:absolute; bottom:calc(10px + env(safe-area-inset-bottom,0px)); left:10px; right:10px; z-index:10; color:#e5e5f0; font-size:12px; background:rgba(10,10,15,.72); padding:8px 12px; border-radius:10px; line-height:1.35; }
+  #bigMsg { position:absolute; top:50%; left:10px; right:10px; transform:translateY(-50%); z-index:16; text-align:center; color:#facc15; font-size:34px; font-weight:800; text-shadow:0 3px 12px #000; display:none; line-height:1.2; }
+  #calLabel { position:absolute; top:58px; left:10px; right:10px; z-index:12; color:#facc15; font-size:14px; font-weight:700; background:rgba(10,10,15,.82); padding:9px 12px; border-radius:10px; display:none; }
+  #sizePanel { position:absolute; bottom:calc(54px + env(safe-area-inset-bottom,0px)); left:10px; right:10px; z-index:11; background:rgba(10,10,15,.72); padding:7px 12px; border-radius:10px; display:flex; align-items:center; gap:8px; }
   #sizePanel label { color:#cbd5e1; font-size:11px; white-space:nowrap; }
-  #sizeSlider { flex:1; height:26px; }
-  #debug { position:absolute; top:64px; right:12px; z-index:10; color:#4ade80; font-size:11px; background:rgba(10,10,15,.75); padding:6px 9px; border-radius:8px; font-family:monospace; text-align:right; white-space:pre; }
-  #jsError { position:absolute; top:150px; left:12px; right:12px; z-index:20; color:#fff; font-size:12px; background:rgba(220,38,38,.92); padding:10px; border-radius:8px; font-family:monospace; display:none; max-height:35vh; overflow:auto; white-space:pre-wrap; }
+  input[type=range] { flex:1; height:26px; }
+  #debug { position:absolute; top:58px; right:10px; z-index:10; color:#4ade80; font-size:11px; background:rgba(10,10,15,.75); padding:5px 8px; border-radius:8px; font-family:monospace; text-align:right; white-space:pre; }
+  #jsError { position:absolute; top:140px; left:10px; right:10px; z-index:20; color:#fff; font-size:12px; background:rgba(220,38,38,.92); padding:10px; border-radius:8px; font-family:monospace; display:none; max-height:35vh; overflow:auto; white-space:pre-wrap; }
 </style>
 </head>
 <body>
 <div id="stage">
-  <video id="video" playsinline muted autoplay></video>
+  <video id="video" class="mirrored" playsinline muted autoplay></video>
   <canvas id="canvas"></canvas>
   <div id="ui">
-    <button id="startBtn">▶ Iniciar cámara</button>
-    <button id="calBtn" disabled>🎯 Calibrar</button>
+    <button id="startBtn">▶ Iniciar</button>
+    <button id="calBtn" disabled>🎯 Calibrar zonas</button>
+    <button id="hihatBtn" disabled>🦶 Hi-hat</button>
+    <button id="camBtn" disabled>🔄 Cámara</button>
     <button id="resetBtn">↺ Reset</button>
-    <button id="testSoundBtn">🔊 Test</button>
+    <button id="testSoundBtn">🔊</button>
   </div>
   <div id="calLabel"></div>
-  <button id="captureBtn">📸 Capturar posición</button>
+  <div id="bigMsg"></div>
   <div id="debug"></div>
   <div id="jsError"></div>
   <div id="sizePanel">
-    <label>Tamaño</label>
-    <input type="range" id="sizeSlider" min="40" max="220" value="90">
-    <label>Sensib.</label>
-    <input type="range" id="sensSlider" min="8" max="60" value="24">
+    <label>Tamaño</label><input type="range" id="sizeSlider" min="40" max="240" value="95">
+    <label>Sens.</label><input type="range" id="sensSlider" min="5" max="60" value="22">
   </div>
-  <div id="status">Toca "Iniciar cámara" para comenzar.</div>
+  <div id="status">Toca "Iniciar" para comenzar.</div>
 </div>
 
 <script type="module">
 import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const startBtn = document.getElementById('startBtn');
-const calBtn = document.getElementById('calBtn');
-const resetBtn = document.getElementById('resetBtn');
-const testSoundBtn = document.getElementById('testSoundBtn');
-const captureBtn = document.getElementById('captureBtn');
-const statusEl = document.getElementById('status');
-const calLabel = document.getElementById('calLabel');
-const debugEl = document.getElementById('debug');
-const jsErrorEl = document.getElementById('jsError');
-const sizeSlider = document.getElementById('sizeSlider');
-const sensSlider = document.getElementById('sensSlider');
+const $ = (id) => document.getElementById(id);
+const video=$('video'), canvas=$('canvas'), ctx=canvas.getContext('2d');
+const startBtn=$('startBtn'), calBtn=$('calBtn'), hihatBtn=$('hihatBtn'), camBtn=$('camBtn'),
+      resetBtn=$('resetBtn'), testSoundBtn=$('testSoundBtn');
+const statusEl=$('status'), calLabel=$('calLabel'), bigMsg=$('bigMsg'),
+      debugEl=$('debug'), jsErrorEl=$('jsError');
+const sizeSlider=$('sizeSlider'), sensSlider=$('sensSlider');
 
-function showJsError(msg){
-  jsErrorEl.style.display = 'block';
-  jsErrorEl.textContent = (jsErrorEl.textContent ? jsErrorEl.textContent + '\n---\n' : '') + msg;
-}
-window.addEventListener('error', (e) => showJsError('ERROR: ' + e.message + ' (línea ' + e.lineno + ')'));
-window.addEventListener('unhandledrejection', (e) => showJsError('PROMISE ERROR: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+function showJsError(m){ jsErrorEl.style.display='block'; jsErrorEl.textContent += (jsErrorEl.textContent?'\n---\n':'')+m; }
+window.addEventListener('error', e => showJsError('ERROR: '+e.message+' (L'+e.lineno+')'));
+window.addEventListener('unhandledrejection', e => showJsError('PROMISE: '+(e.reason&&e.reason.message?e.reason.message:e.reason)));
 
-let W = 0, H = 0;
-function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
-resize();
-window.addEventListener('resize', resize);
+let W=0,H=0;
+function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; }
+resize(); window.addEventListener('resize', resize);
 
 // ---------- AUDIO ----------
-let actx = null, noiseBuffer = null;
+let actx=null, noiseBuffer=null;
 function initAudio(){
-  actx = new (window.AudioContext || window.webkitAudioContext)();
-  const bufSize = actx.sampleRate;
-  noiseBuffer = actx.createBuffer(1, bufSize, actx.sampleRate);
-  const data = noiseBuffer.getChannelData(0);
-  for (let i=0;i<bufSize;i++) data[i] = Math.random()*2-1;
+  actx = new (window.AudioContext||window.webkitAudioContext)();
+  const n = actx.sampleRate;
+  noiseBuffer = actx.createBuffer(1,n,actx.sampleRate);
+  const d = noiseBuffer.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
 }
-function ensureAudioRunning(){
-  if (!actx) initAudio();
-  if (actx.state !== 'running') actx.resume();
-}
-function env(g, peak, t0, atk, dec){
+function ensureAudio(){ if(!actx) initAudio(); if(actx.state!=='running') actx.resume(); }
+function env(g,peak,t0,atk,dec){
   g.gain.cancelScheduledValues(t0);
-  g.gain.setValueAtTime(0.001, t0);
-  g.gain.linearRampToValueAtTime(peak, t0+atk);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0+atk+dec);
+  g.gain.setValueAtTime(0.001,t0);
+  g.gain.linearRampToValueAtTime(peak,t0+atk);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+atk+dec);
+}
+function beep(freq, dur=0.12, vol=0.5){
+  if(!actx) return;
+  const t0=actx.currentTime, o=actx.createOscillator(), g=actx.createGain();
+  o.type='square'; o.frequency.value=freq;
+  env(g,vol,t0,0.005,dur);
+  o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0+dur+0.05);
 }
 function playKick(v=1){
-  const t0 = actx.currentTime;
-  const osc = actx.createOscillator(), g = actx.createGain();
-  osc.type='sine';
-  osc.frequency.setValueAtTime(150, t0);
-  osc.frequency.exponentialRampToValueAtTime(40, t0+0.15);
-  env(g, 1*v, t0, 0.005, 0.15);
-  osc.connect(g); g.connect(actx.destination);
-  osc.start(t0); osc.stop(t0+0.2);
+  const t0=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(150,t0);
+  o.frequency.exponentialRampToValueAtTime(40,t0+0.15);
+  env(g,1*v,t0,0.005,0.15); o.connect(g); g.connect(actx.destination);
+  o.start(t0); o.stop(t0+0.2);
 }
 function playKick2(v=1){
-  const t0 = actx.currentTime;
-  const osc = actx.createOscillator(), g = actx.createGain();
-  osc.type='sine';
-  osc.frequency.setValueAtTime(165, t0);
-  osc.frequency.exponentialRampToValueAtTime(45, t0+0.13);
-  env(g, 0.95*v, t0, 0.005, 0.13);
-  osc.connect(g); g.connect(actx.destination);
-  osc.start(t0); osc.stop(t0+0.18);
+  const t0=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(165,t0);
+  o.frequency.exponentialRampToValueAtTime(45,t0+0.13);
+  env(g,0.95*v,t0,0.005,0.13); o.connect(g); g.connect(actx.destination);
+  o.start(t0); o.stop(t0+0.18);
 }
 function playSnare(v=1){
-  const t0 = actx.currentTime;
-  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
-  const bp = actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=0.8;
-  const g = actx.createGain(); env(g, 0.9*v, t0, 0.002, 0.15);
-  src.connect(bp); bp.connect(g); g.connect(actx.destination);
-  const osc = actx.createOscillator(), g2 = actx.createGain();
-  osc.type='triangle'; osc.frequency.value=200; env(g2, 0.4*v, t0, 0.002, 0.1);
-  osc.connect(g2); g2.connect(actx.destination);
-  src.start(t0); src.stop(t0+0.2); osc.start(t0); osc.stop(t0+0.15);
+  const t0=actx.currentTime;
+  const s=actx.createBufferSource(); s.buffer=noiseBuffer;
+  const bp=actx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; bp.Q.value=0.8;
+  const g=actx.createGain(); env(g,0.9*v,t0,0.002,0.15);
+  s.connect(bp); bp.connect(g); g.connect(actx.destination);
+  const o=actx.createOscillator(), g2=actx.createGain();
+  o.type='triangle'; o.frequency.value=200; env(g2,0.4*v,t0,0.002,0.1);
+  o.connect(g2); g2.connect(actx.destination);
+  s.start(t0); s.stop(t0+0.2); o.start(t0); o.stop(t0+0.15);
 }
 function playHihatClosed(v=1){
-  const t0 = actx.currentTime;
-  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
-  const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=7000;
-  const g = actx.createGain(); env(g, 0.5*v, t0, 0.001, 0.06);
-  src.connect(hp); hp.connect(g); g.connect(actx.destination);
-  src.start(t0); src.stop(t0+0.08);
+  const t0=actx.currentTime, s=actx.createBufferSource(); s.buffer=noiseBuffer;
+  const hp=actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=7000;
+  const g=actx.createGain(); env(g,0.5*v,t0,0.001,0.06);
+  s.connect(hp); hp.connect(g); g.connect(actx.destination); s.start(t0); s.stop(t0+0.08);
 }
 function playHihatOpen(v=1){
-  const t0 = actx.currentTime;
-  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
-  const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000;
-  const g = actx.createGain(); env(g, 0.5*v, t0, 0.001, 0.35);
-  src.connect(hp); hp.connect(g); g.connect(actx.destination);
-  src.start(t0); src.stop(t0+0.4);
+  const t0=actx.currentTime, s=actx.createBufferSource(); s.buffer=noiseBuffer;
+  const hp=actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000;
+  const g=actx.createGain(); env(g,0.5*v,t0,0.001,0.35);
+  s.connect(hp); hp.connect(g); g.connect(actx.destination); s.start(t0); s.stop(t0+0.4);
 }
 function playPedalChick(){
-  const t0 = actx.currentTime;
-  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
-  const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=8000;
-  const g = actx.createGain(); env(g, 0.25, t0, 0.001, 0.02);
-  src.connect(hp); hp.connect(g); g.connect(actx.destination);
-  src.start(t0); src.stop(t0+0.04);
+  const t0=actx.currentTime, s=actx.createBufferSource(); s.buffer=noiseBuffer;
+  const hp=actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=8000;
+  const g=actx.createGain(); env(g,0.25,t0,0.001,0.02);
+  s.connect(hp); hp.connect(g); g.connect(actx.destination); s.start(t0); s.stop(t0+0.04);
 }
 function playTom(v=1){
-  const t0 = actx.currentTime;
-  const osc = actx.createOscillator(), g = actx.createGain();
-  osc.type='sine';
-  osc.frequency.setValueAtTime(220, t0);
-  osc.frequency.exponentialRampToValueAtTime(90, t0+0.2);
-  env(g, 0.9*v, t0, 0.005, 0.2);
-  osc.connect(g); g.connect(actx.destination);
-  osc.start(t0); osc.stop(t0+0.25);
+  const t0=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();
+  o.type='sine'; o.frequency.setValueAtTime(220,t0);
+  o.frequency.exponentialRampToValueAtTime(90,t0+0.2);
+  env(g,0.9*v,t0,0.005,0.2); o.connect(g); g.connect(actx.destination);
+  o.start(t0); o.stop(t0+0.25);
 }
 function playCrash(v=1){
-  const t0 = actx.currentTime;
-  const src = actx.createBufferSource(); src.buffer = noiseBuffer;
-  const hp = actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=5000;
-  const g = actx.createGain(); env(g, 0.6*v, t0, 0.002, 0.8);
-  src.connect(hp); hp.connect(g); g.connect(actx.destination);
-  src.start(t0); src.stop(t0+0.9);
+  const t0=actx.currentTime, s=actx.createBufferSource(); s.buffer=noiseBuffer;
+  const hp=actx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=5000;
+  const g=actx.createGain(); env(g,0.6*v,t0,0.002,0.8);
+  s.connect(hp); hp.connect(g); g.connect(actx.destination); s.start(t0); s.stop(t0+0.9);
 }
-function playHihat(v=1){ hihatOpen ? playHihatOpen(v) : playHihatClosed(v); }
+function playHihat(v=1){ hihatOpen?playHihatOpen(v):playHihatClosed(v); }
 
-const SOUND_MAP = { Kick:playKick, Kick2:playKick2, Snare:playSnare, HiHat:playHihat, Tom:playTom, Crash:playCrash };
-const ZONE_COLORS = { Kick:'#ef4444', Kick2:'#a855f7', Snare:'#3b82f6', HiHat:'#eab308', Tom:'#22c55e', Crash:'#f97316' };
-const ZONE_TRIGGER = { Kick:'footR', Kick2:'footL', Snare:'hand', HiHat:'hand', Tom:'hand', Crash:'hand' };
-const ZONE_ORDER = ['Kick','Snare','HiHat','Tom','Crash','Kick2'];
-const ZONE_PROMPTS = {
-  Kick: '1/6 — Toca donde está tu PEDAL DE KICK (pie derecho)',
-  Snare: '2/6 — Toca donde va el SNARE',
-  HiHat: '3/6 — Toca donde va el HI-HAT',
-  Tom: '4/6 — Toca donde va el TOM',
-  Crash: '5/6 — Toca donde va el CRASH',
-  Kick2: '6/6 — Toca donde está tu SEGUNDO PEDAL (pie izquierdo)'
+const SOUND_MAP={Kick:playKick,Kick2:playKick2,Snare:playSnare,HiHat:playHihat,Tom:playTom,Crash:playCrash};
+const ZONE_COLORS={Kick:'#ef4444',Kick2:'#a855f7',Snare:'#3b82f6',HiHat:'#eab308',Tom:'#22c55e',Crash:'#f97316'};
+const ZONE_TRIGGER={Kick:'footR',Kick2:'footL',Snare:'hand',HiHat:'hand',Tom:'hand',Crash:'hand'};
+const ZONE_ORDER=['Kick','Snare','HiHat','Tom','Crash','Kick2'];
+const ZONE_PROMPTS={
+  Kick:'1/6 — Toca donde va el PEDAL KICK (pie derecho)',
+  Snare:'2/6 — Toca donde va el SNARE',
+  HiHat:'3/6 — Toca donde va el HI-HAT',
+  Tom:'4/6 — Toca donde va el TOM',
+  Crash:'5/6 — Toca donde va el CRASH',
+  Kick2:'6/6 — Toca donde va el SEGUNDO PEDAL (pie izq.)'
 };
 
-testSoundBtn.addEventListener('click', () => {
-  ensureAudioRunning(); playKick();
-  statusEl.textContent = 'Audio OK. Estado: ' + actx.state;
-});
+testSoundBtn.addEventListener('click',()=>{ ensureAudio(); playKick(); statusEl.textContent='Audio OK ('+actx.state+')'; });
 
-// ---------- AJUSTES PERSISTENTES ----------
-let zoneRadius = 0.09;   // radio de todas las zonas (ajustable con slider)
-let sensitivity = 0.24;  // fracción del ancho de hombros que cuenta como golpe
-
-function localStorageSafe(key, val){
-  try {
-    if (val === undefined) return window.localStorage.getItem(key);
-    window.localStorage.setItem(key, val);
-  } catch(e){ return null; }
+// ---------- MAPEO CORRECTO DE COORDENADAS ----------
+// El video se muestra con object-fit:cover, o sea RECORTADO. Hay que mapear
+// las coordenadas del modelo a través de ese recorte, no directo a la pantalla.
+let mirrored = true;
+function mapToScreen(x,y){
+  const vw = video.videoWidth||640, vh = video.videoHeight||480;
+  const scale = Math.max(W/vw, H/vh);
+  const dw = vw*scale, dh = vh*scale;
+  const ox = (W-dw)/2, oy = (H-dh)/2;
+  const xm = mirrored ? (1-x) : x;
+  return { nx:(ox+xm*dw)/W, ny:(oy+y*dh)/H };
 }
 
-sizeSlider.addEventListener('input', () => {
-  zoneRadius = parseInt(sizeSlider.value, 10) / 1000;
-  saveAll();
-});
-sensSlider.addEventListener('input', () => {
-  sensitivity = parseInt(sensSlider.value, 10) / 100;
-  saveAll();
-});
+// ---------- AJUSTES ----------
+let zoneRadius=0.095, sensitivity=0.22;
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+sizeSlider.addEventListener('input',()=>{ zoneRadius=+sizeSlider.value/1000; saveAll(); });
+sensSlider.addEventListener('input',()=>{ sensitivity=+sensSlider.value/100; saveAll(); });
 
-// ---------- CALIBRACIÓN ----------
-let zones = [];
-let hihatCalib = { openY: null, closedY: null };
-let calStage = 'idle';
-let calIndex = 0;
-
+let zones=[], hihatCalib={openY:null,closedY:null};
 function loadAll(){
-  const sz = localStorageSafe('drumZones');
-  if (sz) { try { zones = JSON.parse(sz); } catch(e){ zones = []; } }
-  const sh = localStorageSafe('hihatCalib');
-  if (sh) { try { hihatCalib = JSON.parse(sh); } catch(e){} }
-  const sr = localStorageSafe('zoneRadius');
-  if (sr) { zoneRadius = parseFloat(sr); sizeSlider.value = Math.round(zoneRadius*1000); }
-  const ss = localStorageSafe('sensitivity');
-  if (ss) { sensitivity = parseFloat(ss); sensSlider.value = Math.round(sensitivity*100); }
+  const a=lsGet('drumZones'); if(a){ try{ zones=JSON.parse(a);}catch(e){zones=[];} }
+  const b=lsGet('hihatCalib'); if(b){ try{ hihatCalib=JSON.parse(b);}catch(e){} }
+  const c=lsGet('zoneRadius'); if(c){ zoneRadius=parseFloat(c); sizeSlider.value=Math.round(zoneRadius*1000); }
+  const d=lsGet('sensitivity'); if(d){ sensitivity=parseFloat(d); sensSlider.value=Math.round(sensitivity*100); }
 }
 function saveAll(){
-  localStorageSafe('drumZones', JSON.stringify(zones));
-  localStorageSafe('hihatCalib', JSON.stringify(hihatCalib));
-  localStorageSafe('zoneRadius', String(zoneRadius));
-  localStorageSafe('sensitivity', String(sensitivity));
+  lsSet('drumZones',JSON.stringify(zones));
+  lsSet('hihatCalib',JSON.stringify(hihatCalib));
+  lsSet('zoneRadius',String(zoneRadius));
+  lsSet('sensitivity',String(sensitivity));
 }
 
-function startCalibration(){
-  zones = [];
-  hihatCalib = { openY:null, closedY:null };
-  calIndex = 0;
-  calStage = 'zones';
-  calLabel.style.display = 'block';
-  captureBtn.style.display = 'none';
-  calLabel.textContent = ZONE_PROMPTS[ZONE_ORDER[calIndex]];
-  calBtn.classList.add('active');
-}
-
-canvas.addEventListener('pointerdown', (e) => {
-  if (calStage !== 'zones') return;
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX - rect.left) / rect.width;
-  const y = (e.clientY - rect.top) / rect.height;
-  zones.push({ name: ZONE_ORDER[calIndex], x, y });
+// ---------- CALIBRACIÓN DE ZONAS (por toque) ----------
+let calStage='idle', calIndex=0;
+calBtn.addEventListener('click',()=>{
+  ensureAudio(); zones=[]; calIndex=0; calStage='zones';
+  calLabel.style.display='block'; calLabel.textContent=ZONE_PROMPTS[ZONE_ORDER[0]];
+});
+canvas.addEventListener('pointerdown',(e)=>{
+  if(calStage!=='zones') return;
+  const r=canvas.getBoundingClientRect();
+  zones.push({name:ZONE_ORDER[calIndex], x:(e.clientX-r.left)/r.width, y:(e.clientY-r.top)/r.height});
   calIndex++;
-  if (calIndex >= ZONE_ORDER.length){
-    calStage = 'hihat_open';
-    calLabel.textContent = 'HI-HAT ABIERTO: levanta bien el TALÓN izquierdo y mantenlo. Toca "Capturar posición".';
-    captureBtn.style.display = 'inline-block';
-  } else {
-    calLabel.textContent = ZONE_PROMPTS[ZONE_ORDER[calIndex]];
-  }
+  if(calIndex>=ZONE_ORDER.length){
+    calStage='idle'; calLabel.style.display='none'; saveAll();
+    statusEl.textContent='Zonas listas. Ahora toca "🦶 Hi-hat" para calibrar el pedal (tiene cuenta regresiva, no tienes que volver al celular).';
+  } else calLabel.textContent=ZONE_PROMPTS[ZONE_ORDER[calIndex]];
+});
+resetBtn.addEventListener('click',()=>{
+  zones=[]; hihatCalib={openY:null,closedY:null}; saveAll();
+  statusEl.textContent='Borrado. Calibra de nuevo.';
 });
 
-captureBtn.addEventListener('click', () => {
-  const heelY = points.LeftHeel.smoothY;
-  if (heelY === null){
-    statusEl.textContent = 'No detecto tu talón izquierdo — asegúrate de que se vean tus pies en cuadro.';
-    return;
-  }
-  if (calStage === 'hihat_open'){
-    hihatCalib.openY = heelY;
-    calStage = 'hihat_closed';
-    calLabel.textContent = 'HI-HAT CERRADO: apoya el pie izquierdo completo en el piso. Toca "Capturar posición".';
-  } else if (calStage === 'hihat_closed'){
-    hihatCalib.closedY = heelY;
-    calStage = 'idle';
-    calLabel.style.display = 'none';
-    captureBtn.style.display = 'none';
-    calBtn.classList.remove('active');
-    saveAll();
-    statusEl.textContent = 'Calibración completa. Ajusta tamaño y sensibilidad con los sliders mientras tocas.';
-  }
+// ---------- CALIBRACIÓN HI-HAT CON CUENTA REGRESIVA + AUDIO ----------
+// Presionas una vez, te sientas, y el sistema graba el rango de tu talón solo.
+let hhCal={active:false,phase:null,t0:0,minY:Infinity,maxY:-Infinity,lastBeep:-1};
+hihatBtn.addEventListener('click',()=>{
+  ensureAudio();
+  hhCal={active:true,phase:'countdown',t0:performance.now(),minY:Infinity,maxY:-Infinity,lastBeep:-1};
+  statusEl.textContent='Ve a tu posición de tocar. Te aviso con pitidos.';
 });
+function updateHihatCalibration(heelY){
+  if(!hhCal.active) return;
+  const el=(performance.now()-hhCal.t0)/1000;
+  if(hhCal.phase==='countdown'){
+    const rem=Math.ceil(6-el);
+    bigMsg.style.display='block';
+    bigMsg.textContent='Prepárate\n'+rem;
+    const sec=Math.floor(el);
+    if(sec!==hhCal.lastBeep){ hhCal.lastBeep=sec; beep(660,0.09,0.4); }
+    if(el>=6){ hhCal.phase='recording'; hhCal.t0=performance.now(); hhCal.lastBeep=-1; beep(1200,0.3,0.6); }
+  } else if(hhCal.phase==='recording'){
+    const rem=Math.ceil(8-el);
+    bigMsg.style.display='block';
+    bigMsg.textContent='SUBE Y BAJA\nEL TALÓN IZQ.\n'+rem;
+    if(heelY!==null){ hhCal.minY=Math.min(hhCal.minY,heelY); hhCal.maxY=Math.max(hhCal.maxY,heelY); }
+    if(el>=8){
+      hhCal.active=false; bigMsg.style.display='none';
+      if(isFinite(hhCal.minY)&&isFinite(hhCal.maxY)&&(hhCal.maxY-hhCal.minY)>0.01){
+        hihatCalib={openY:hhCal.minY, closedY:hhCal.maxY}; saveAll();
+        beep(1600,0.4,0.6);
+        statusEl.textContent='Hi-hat calibrado. Rango: '+(hhCal.maxY-hhCal.minY).toFixed(3);
+      } else {
+        beep(200,0.5,0.6);
+        statusEl.textContent='No detecté suficiente movimiento del talón. Repite e intenta un rango más amplio.';
+      }
+    }
+  }
+}
 
-resetBtn.addEventListener('click', () => {
-  zones = []; hihatCalib = { openY:null, closedY:null };
-  saveAll();
-  statusEl.textContent = 'Borrado. Calibra de nuevo.';
+// ---------- CÁMARA ----------
+let facing='user';
+camBtn.addEventListener('click', async ()=>{
+  facing = (facing==='user') ? 'environment' : 'user';
+  mirrored = (facing==='user');
+  video.classList.toggle('mirrored', mirrored);
+  await startStream();
+  statusEl.textContent='Cámara: '+(facing==='user'?'frontal':'trasera')+'. Puede que necesites recalibrar las zonas.';
 });
 
 // ---------- ESTADO DE PUNTOS ----------
-function newPoint(){ return { prevY:null, prevT:0, smoothY:null, lastSeen:0, descending:false, peakV:0 }; }
-const points = {
-  RightHand: newPoint(), LeftHand: newPoint(),
-  RightFoot: newPoint(), LeftFoot: newPoint(),
-  LeftHeel:  newPoint()
-};
+function newPoint(){ return {px:null,py:null,prevT:0,sx:null,sy:null,lastSeen:0,moving:false,peakV:0}; }
+const points={RightHand:newPoint(),LeftHand:newPoint(),RightFoot:newPoint(),LeftFoot:newPoint(),LeftHeel:newPoint()};
+const lastHit={};
+const COOLDOWN_MS=70, SMOOTHING=0.35, MIN_VIS=0.55;
+const FOOT_FACTOR=0.5, HIHAT_HYST=0.15;
+let shoulderWidth=0.18, hihatOpen=true, flashZones={};
 
-const lastHit = {};
-const COOLDOWN_MS = 70;
-const FOOT_SENS_FACTOR = 0.55; // los pies se mueven menos que las manos
-const SMOOTHING = 0.2;
-const MIN_VISIBILITY = 0.5;
-const HIHAT_HYSTERESIS = 0.15;
-const DEFAULT_SHOULDER = 0.18;
-let shoulderWidth = DEFAULT_SHOULDER;
-let hihatOpen = true;
-let flashZones = {};
-
-function updateSmoothed(st, ny, now){
-  if (now - st.lastSeen > 250){
-    st.smoothY = null; st.prevY = null; st.prevDy = 0;
-    st.descending = false; st.peakV = 0;
-  }
-  st.lastSeen = now;
-  if (st.smoothY === null) st.smoothY = ny;
-  st.smoothY = st.smoothY * SMOOTHING + ny * (1 - SMOOTHING);
-  return st.smoothY;
+function smoothPoint(st,nx,ny,now){
+  if(now-st.lastSeen>250){ st.sx=null; st.sy=null; st.px=null; st.moving=false; st.peakV=0; }
+  st.lastSeen=now;
+  if(st.sx===null){ st.sx=nx; st.sy=ny; }
+  st.sx = st.sx*SMOOTHING + nx*(1-SMOOTHING);
+  st.sy = st.sy*SMOOTHING + ny*(1-SMOOTHING);
 }
 
-function checkZoneHit(nx, ny, allowedTrigger, velNorm){
-  let best = null, bestDist = Infinity;
-  for (const z of zones){
-    if (ZONE_TRIGGER[z.name] !== allowedTrigger) continue;
-    const dx = nx - z.x, dy = ny - z.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    if (dist < zoneRadius && dist < bestDist){ best = z; bestDist = dist; }
+function checkZoneHit(nx,ny,trig,velNorm){
+  let best=null,bd=Infinity;
+  for(const z of zones){
+    if(ZONE_TRIGGER[z.name]!==trig) continue;
+    const dx=nx-z.x, dy=ny-z.y, d=Math.hypot(dx,dy);
+    if(d<zoneRadius && d<bd){ best=z; bd=d; }
   }
-  if (!best) return null;
-  const now = performance.now();
-  if (!lastHit[best.name] || now - lastHit[best.name] > COOLDOWN_MS){
-    lastHit[best.name] = now;
-    const vol = Math.max(0.35, Math.min(1, 0.35 + (velNorm - 1) * 0.4));
-    SOUND_MAP[best.name] && SOUND_MAP[best.name](vol);
+  if(!best) return null;
+  const now=performance.now();
+  if(!lastHit[best.name]||now-lastHit[best.name]>COOLDOWN_MS){
+    lastHit[best.name]=now;
+    const vol=Math.max(0.35,Math.min(1,0.35+(velNorm-1)*0.4));
+    SOUND_MAP[best.name]&&SOUND_MAP[best.name](vol);
     return best.name;
   }
   return null;
 }
 
-// Máquina de estados: entra en "descendiendo" al superar el umbral,
-// dispara al detectar el FONDO del golpe (cuando frena o devuelve).
-// Mucho más tolerante que exigir un patrón exacto de dos cuadros.
-function processHitPoint(label, nx, ny, sensFactor, triggerType){
-  const st = points[label];
-  const now = performance.now();
-  const smY = updateSmoothed(st, ny, now);
+// Detección de IMPACTO en cualquier dirección: acelera -> frena bruscamente.
+// Ya no depende de que el golpe sea vertical.
+function processHit(label,nx,ny,factor,trig){
+  const st=points[label], now=performance.now();
+  smoothPoint(st,nx,ny,now);
+  if(st.px===null){ st.px=st.sx; st.py=st.sy; st.prevT=now; return; }
 
-  if (st.prevY === null){ st.prevY = smY; st.prevT = now; return; }
+  const dt=Math.max(4,now-st.prevT);
+  const dist=Math.hypot(st.sx-st.px, st.sy-st.py);
 
-  const dt = Math.max(4, now - st.prevT);
-  const v = (smY - st.prevY) / dt * 16.67; // normalizado a "por cuadro de 60fps"
-  const threshold = sensitivity * sensFactor * shoulderWidth;
+  // rechazo de "teletransporte": si el punto salta absurdamente, el modelo
+  // confundió una extremidad con otra (pasa al cruzar los brazos). No dispares.
+  if(dist > shoulderWidth*1.5){
+    st.px=st.sx; st.py=st.sy; st.prevT=now; st.moving=false; st.peakV=0;
+    return;
+  }
 
-  if (!st.descending){
-    if (v > threshold){ st.descending = true; st.peakV = v; }
+  const v = dist/dt*16.67;
+  const threshold = sensitivity*factor*shoulderWidth;
+
+  if(!st.moving){
+    if(v>threshold){ st.moving=true; st.peakV=v; }
   } else {
-    if (v > st.peakV) st.peakV = v;
-    if (v < st.peakV * 0.4 || v <= 0){
-      if (calStage === 'idle'){
-        const velNorm = st.peakV / Math.max(threshold, 1e-6);
-        const hitName = checkZoneHit(nx, ny, triggerType, velNorm);
-        if (hitName) flashZones[hitName] = now;
+    if(v>st.peakV) st.peakV=v;
+    if(v < st.peakV*0.45){
+      if(calStage==='idle' && !hhCal.active){
+        const vn=st.peakV/Math.max(threshold,1e-6);
+        const hit=checkZoneHit(st.sx,st.sy,trig,vn);
+        if(hit) flashZones[hit]=now;
       }
-      st.descending = false; st.peakV = 0;
+      st.moving=false; st.peakV=0;
     }
   }
-  st.prevY = smY; st.prevT = now;
+  st.px=st.sx; st.py=st.sy; st.prevT=now;
 }
 
-function updateHihatState(ny){
-  const now = performance.now();
-  const smY = updateSmoothed(points.LeftHeel, ny, now);
-  if (hihatCalib.openY === null || hihatCalib.closedY === null) return;
-  const range = hihatCalib.closedY - hihatCalib.openY;
-  if (Math.abs(range) < 0.005) return;
-  const t = (smY - hihatCalib.openY) / range; // 0 = abierto, 1 = cerrado
-  if (hihatOpen && t > 0.5 + HIHAT_HYSTERESIS){
-    hihatOpen = false;
-    if (calStage === 'idle') playPedalChick();
-  } else if (!hihatOpen && t < 0.5 - HIHAT_HYSTERESIS){
-    hihatOpen = true;
-  }
+function updateHihat(heelNy){
+  const st=points.LeftHeel, now=performance.now();
+  smoothPoint(st,0,heelNy,now);
+  if(hihatCalib.openY===null||hihatCalib.closedY===null) return;
+  const range=hihatCalib.closedY-hihatCalib.openY;
+  if(Math.abs(range)<0.005) return;
+  const t=(st.sy-hihatCalib.openY)/range;
+  if(hihatOpen && t>0.5+HIHAT_HYST){ hihatOpen=false; if(calStage==='idle'&&!hhCal.active) playPedalChick(); }
+  else if(!hihatOpen && t<0.5-HIHAT_HYST){ hihatOpen=true; }
 }
 
 // ---------- DIBUJO ----------
 function drawZones(){
-  const now = performance.now();
-  for (const z of zones){
-    const cx = z.x*W, cy = z.y*H, r = zoneRadius*W;
-    const flashing = flashZones[z.name] && now - flashZones[z.name] < 120;
-    ctx.beginPath();
-    ctx.arc(cx, cy, flashing ? r*1.2 : r, 0, Math.PI*2);
-    ctx.fillStyle = ZONE_COLORS[z.name] + (flashing ? 'bb' : '30');
-    ctx.fill();
-    ctx.lineWidth = flashing ? 5 : 3;
-    ctx.strokeStyle = ZONE_COLORS[z.name];
-    ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(z.name, cx, cy+5);
+  const now=performance.now();
+  for(const z of zones){
+    const cx=z.x*W, cy=z.y*H, r=zoneRadius*W;
+    const f=flashZones[z.name]&&now-flashZones[z.name]<120;
+    ctx.beginPath(); ctx.arc(cx,cy,f?r*1.2:r,0,Math.PI*2);
+    ctx.fillStyle=ZONE_COLORS[z.name]+(f?'bb':'30'); ctx.fill();
+    ctx.lineWidth=f?5:3; ctx.strokeStyle=ZONE_COLORS[z.name]; ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.font='bold 13px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(z.name,cx,cy+5);
   }
 }
-function drawPoint(nx, ny, color, descending){
-  ctx.beginPath();
-  ctx.arc(nx*W, ny*H, descending ? 14 : 9, 0, Math.PI*2);
-  ctx.fillStyle = descending ? color : '#ffffffcc';
-  ctx.fill();
-  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.stroke();
+function drawPt(nx,ny,color,active){
+  ctx.beginPath(); ctx.arc(nx*W,ny*H,active?15:9,0,Math.PI*2);
+  ctx.fillStyle=active?color:'#ffffffcc'; ctx.fill();
+  ctx.strokeStyle=color; ctx.lineWidth=3; ctx.stroke();
 }
 
 // ---------- PROCESAMIENTO ----------
-let poseDetected = false, fps = 0, lastFrameT = 0;
+let poseOk=false, fps=0, lastT=0;
+function processPose(res){
+  poseOk = !!(res.landmarks&&res.landmarks.length);
+  let heelY=null;
+  if(!poseOk){ updateHihatCalibration(null); return; }
+  const lm=res.landmarks[0];
+  const ok=p=>p&&(p.visibility===undefined||p.visibility>=MIN_VIS)&&isFinite(p.x)&&isFinite(p.y);
 
-function processPose(result){
-  poseDetected = !!(result.landmarks && result.landmarks.length);
-  if (!poseDetected) return;
-  const lm = result.landmarks[0];
-  const vis = (p) => (p && (p.visibility === undefined || p.visibility >= MIN_VISIBILITY) && isFinite(p.x) && isFinite(p.y));
-
-  // hombros -> escala corporal (hace la sensibilidad independiente de la distancia)
-  const lSh = lm[11], rSh = lm[12];
-  if (vis(lSh) && vis(rSh)){
-    const w = Math.abs(lSh.x - rSh.x);
-    if (w > 0.02) shoulderWidth = w;
-  }
-
-  // manos: 19/20 = dedo índice (mejor proxy de la punta de baqueta que la muñeca)
-  const lHand = vis(lm[19]) ? lm[19] : lm[15];
-  const rHand = vis(lm[20]) ? lm[20] : lm[16];
-  if (vis(lHand)){
-    const nx = 1 - lHand.x, ny = lHand.y;
-    drawPoint(nx, ny, '#7c3aed', points.LeftHand.descending);
-    processHitPoint('LeftHand', nx, ny, 1.0, 'hand');
-  }
-  if (vis(rHand)){
-    const nx = 1 - rHand.x, ny = rHand.y;
-    drawPoint(nx, ny, '#7c3aed', points.RightHand.descending);
-    processHitPoint('RightHand', nx, ny, 1.0, 'hand');
+  const lSh=lm[11], rSh=lm[12];
+  if(ok(lSh)&&ok(rSh)){
+    const a=mapToScreen(lSh.x,lSh.y), b=mapToScreen(rSh.x,rSh.y);
+    const w=Math.hypot(a.nx-b.nx,a.ny-b.ny);
+    if(w>0.02) shoulderWidth=w;
   }
 
-  // pies: 31/32 = punta, 29 = talón izquierdo (estado hi-hat)
-  const rFoot = lm[32], lFoot = lm[31], lHeel = lm[29];
-  if (vis(rFoot)){
-    const nx = 1 - rFoot.x, ny = rFoot.y;
-    drawPoint(nx, ny, '#ef4444', points.RightFoot.descending);
-    processHitPoint('RightFoot', nx, ny, FOOT_SENS_FACTOR, 'footR');
-  }
-  if (vis(lFoot)){
-    const nx = 1 - lFoot.x, ny = lFoot.y;
-    drawPoint(nx, ny, '#a855f7', points.LeftFoot.descending);
-    processHitPoint('LeftFoot', nx, ny, FOOT_SENS_FACTOR, 'footL');
-  }
-  if (vis(lHeel)) updateHihatState(lHeel.y);
+  const lH=ok(lm[19])?lm[19]:lm[15], rH=ok(lm[20])?lm[20]:lm[16];
+  if(ok(lH)){ const p=mapToScreen(lH.x,lH.y); drawPt(p.nx,p.ny,'#7c3aed',points.LeftHand.moving); processHit('LeftHand',p.nx,p.ny,1,'hand'); }
+  if(ok(rH)){ const p=mapToScreen(rH.x,rH.y); drawPt(p.nx,p.ny,'#7c3aed',points.RightHand.moving); processHit('RightHand',p.nx,p.ny,1,'hand'); }
+
+  const rF=lm[32], lF=lm[31], lHe=lm[29];
+  if(ok(rF)){ const p=mapToScreen(rF.x,rF.y); drawPt(p.nx,p.ny,'#ef4444',points.RightFoot.moving); processHit('RightFoot',p.nx,p.ny,FOOT_FACTOR,'footR'); }
+  if(ok(lF)){ const p=mapToScreen(lF.x,lF.y); drawPt(p.nx,p.ny,'#a855f7',points.LeftFoot.moving); processHit('LeftFoot',p.nx,p.ny,FOOT_FACTOR,'footL'); }
+  if(ok(lHe)){ const p=mapToScreen(lHe.x,lHe.y); heelY=p.ny; updateHihat(p.ny); }
+
+  updateHihatCalibration(heelY);
 }
 
 function renderOverlay(){
-  const hh = (hihatCalib.openY !== null && hihatCalib.closedY !== null)
-    ? (hihatOpen ? 'ABIERTO' : 'CERRADO') : 'sin calib';
+  const hh=(hihatCalib.openY!==null&&hihatCalib.closedY!==null)?(hihatOpen?'ABIERTO':'CERRADO'):'sin calib';
   debugEl.textContent =
-    `fps: ${fps.toFixed(0)}  pose: ${poseDetected?'si':'no'}\n` +
-    `hombros: ${shoulderWidth.toFixed(3)}\n` +
-    `tamaño: ${zoneRadius.toFixed(3)}  sens: ${sensitivity.toFixed(2)}\n` +
-    `hihat: ${hh}`;
+    `fps:${fps.toFixed(0)} pose:${poseOk?'si':'no'}\n`+
+    `hombros:${shoulderWidth.toFixed(3)}\n`+
+    `tam:${zoneRadius.toFixed(3)} sens:${sensitivity.toFixed(2)}\n`+
+    `hihat:${hh}`;
 }
 
 // ---------- MODELO + LOOP ----------
-let poseLandmarker = null, running = false;
-
+let pose=null, running=false, stream=null;
 async function initModel(){
-  const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
-  );
-  poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-    baseOptions: {
-      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-      delegate: "CPU"
-    },
-    runningMode: "VIDEO",
-    numPoses: 1,
-    minPoseDetectionConfidence: 0.5,
-    minPosePresenceConfidence: 0.5,
-    minTrackingConfidence: 0.5
+  const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  pose=await PoseLandmarker.createFromOptions(vision,{
+    baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task", delegate:"CPU" },
+    runningMode:"VIDEO", numPoses:1,
+    minPoseDetectionConfidence:0.5, minPosePresenceConfidence:0.5, minTrackingConfidence:0.5
   });
 }
-
+async function startStream(){
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  stream=await navigator.mediaDevices.getUserMedia({ video:{facingMode:facing,width:{ideal:640},height:{ideal:480}}, audio:false });
+  video.srcObject=stream; await video.play();
+}
 function loop(){
-  if (!running) return;
-  if (video.readyState >= 2 && poseLandmarker){
-    const t = performance.now();
-    if (lastFrameT){
-      const inst = 1000 / Math.max(1, t - lastFrameT);
-      fps = fps ? fps*0.9 + inst*0.1 : inst;
-    }
-    lastFrameT = t;
+  if(!running) return;
+  if(video.readyState>=2&&pose){
+    const t=performance.now();
+    if(lastT){ const i=1000/Math.max(1,t-lastT); fps=fps?fps*0.9+i*0.1:i; }
+    lastT=t;
     ctx.clearRect(0,0,W,H);
     drawZones();
-    const res = poseLandmarker.detectForVideo(video, t);
-    processPose(res);
+    processPose(pose.detectForVideo(video,t));
     renderOverlay();
   }
   requestAnimationFrame(loop);
 }
-
-startBtn.addEventListener('click', async () => {
-  startBtn.disabled = true;
-  startBtn.textContent = 'Cargando...';
-  try {
-    ensureAudioRunning();
-    statusEl.textContent = 'Cargando modelo de cuerpo...';
-    if (!poseLandmarker) await initModel();
-    statusEl.textContent = 'Pidiendo cámara...';
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode:'user', width:{ideal:640}, height:{ideal:480} }, audio:false
-    });
-    video.srcObject = stream;
-    await video.play();
-    running = true;
-    requestAnimationFrame(loop);
-    startBtn.style.display = 'none';
-    calBtn.disabled = false;
+startBtn.addEventListener('click', async ()=>{
+  startBtn.disabled=true; startBtn.textContent='Cargando...';
+  try{
+    ensureAudio();
+    statusEl.textContent='Cargando modelo...';
+    if(!pose) await initModel();
+    statusEl.textContent='Pidiendo cámara...';
+    await startStream();
+    running=true; requestAnimationFrame(loop);
+    startBtn.style.display='none';
+    calBtn.disabled=false; hihatBtn.disabled=false; camBtn.disabled=false;
     loadAll();
-    statusEl.textContent = zones.length
-      ? 'Listo. Ajusta tamaño/sensibilidad con los sliders mientras tocas.'
-      : 'Cámara activa. Toca "Calibrar" — deben verse manos Y pies en cuadro.';
-  } catch (err){
-    statusEl.textContent = 'Error: ' + err.message;
-    showJsError('INIT ERROR: ' + err.message);
-    startBtn.disabled = false;
-    startBtn.textContent = '▶ Iniciar cámara';
+    statusEl.textContent = zones.length ? 'Listo. Ajusta tamaño/sensibilidad mientras tocas.' : 'Toca "Calibrar zonas". Deben verse manos Y pies.';
+  }catch(err){
+    statusEl.textContent='Error: '+err.message; showJsError('INIT: '+err.message);
+    startBtn.disabled=false; startBtn.textContent='▶ Iniciar';
   }
 });
-
-calBtn.addEventListener('click', () => { ensureAudioRunning(); startCalibration(); });
 loadAll();
 </script>
 </body>
